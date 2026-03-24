@@ -51,7 +51,7 @@
           <CheckBox Name="CapsAspectCheckbox" Content="Aspect Ratio"
                     Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
           <StackPanel Orientation="Horizontal" Spacing="4"
-                      IsVisible="{Binding #CapsAspectCheckbox.IsChecked}" Margin="16,0,0,0">
+                      IsVisible="{Binding #CapsAspectCheckbox.IsChecked, TargetNullValue=False, FallbackValue=False}" Margin="16,0,0,0">
             <TextBox Name="CapsAspectX" Width="44" />
             <TextBlock Classes="label" Text=":" VerticalAlignment="Center" />
             <TextBox Name="CapsAspectY" Width="44" />
@@ -61,7 +61,7 @@
           <CheckBox Name="CapsFixedCheckbox" Content="Fixed Size"
                     Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
           <StackPanel Orientation="Horizontal" Spacing="4"
-                      IsVisible="{Binding #CapsFixedCheckbox.IsChecked}" Margin="16,0,0,0">
+                      IsVisible="{Binding #CapsFixedCheckbox.IsChecked, TargetNullValue=False, FallbackValue=False}" Margin="16,0,0,0">
             <TextBox Name="CapsFixedW" Width="50" />
             <TextBlock Classes="label" Text="x" VerticalAlignment="Center" />
             <TextBox Name="CapsFixedH" Width="50" />
@@ -71,7 +71,7 @@
           <CheckBox Name="CapsResizeCheckbox" Content="Resize Largest Dim"
                     Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
           <StackPanel Orientation="Horizontal" Spacing="4"
-                      IsVisible="{Binding #CapsResizeCheckbox.IsChecked}" Margin="16,0,0,0">
+                      IsVisible="{Binding #CapsResizeCheckbox.IsChecked, TargetNullValue=False, FallbackValue=False}" Margin="16,0,0,0">
             <TextBox Name="CapsResizeValue" Width="56" />
             <TextBlock Classes="label" Text="px" VerticalAlignment="Center" />
           </StackPanel>
@@ -88,7 +88,7 @@
           <!-- Save Caps -->
           <CheckBox Name="CapsSaveCheckbox" Content="Save Caps"
                     Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
-          <StackPanel Spacing="4" IsVisible="{Binding #CapsSaveCheckbox.IsChecked}" Margin="16,0,0,0">
+          <StackPanel Spacing="4" IsVisible="{Binding #CapsSaveCheckbox.IsChecked, TargetNullValue=False, FallbackValue=False}" Margin="16,0,0,0">
             <TextBox Name="CapsSaveDir" Watermark="Destination folder..." IsReadOnly="True" />
             <Button Content="Browse..." Click="OnCapsBrowseClick" HorizontalAlignment="Stretch" />
           </StackPanel>

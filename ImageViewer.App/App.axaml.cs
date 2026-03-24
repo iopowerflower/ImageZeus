@@ -86,8 +86,14 @@ public partial class App : Application
 
         _viewers.Add((window, viewModel));
         window.Show();
+        window.Activate();
+        window.Topmost = true;
 
-        ForceForeground(window);
+        Dispatcher.UIThread.Post(() =>
+        {
+            ForceForeground(window);
+            window.Topmost = false;
+        }, DispatcherPriority.Input);
     }
 
     private static void ForceForeground(Window window)
@@ -114,6 +120,16 @@ public partial class App : Application
         if (window.WindowState == WindowState.Minimized)
             window.WindowState = WindowState.Normal;
         window.Activate();
+    }
+
+    private void OnTrayClicked(object? sender, EventArgs e)
+    {
+        OpenNewViewer(null);
+    }
+
+    private void OnTrayOpenClick(object? sender, EventArgs e)
+    {
+        OpenNewViewer(null);
     }
 
     private void OnTrayExitClick(object? sender, EventArgs e)

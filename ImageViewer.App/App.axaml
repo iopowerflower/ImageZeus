@@ -10,10 +10,13 @@
   <TrayIcon.Icons>
     <TrayIcons>
       <TrayIcon Icon="avares://ImageZeus/Assets/zeusicon.ico"
-                ToolTipText="ImageZeus">
+                ToolTipText="ImageZeus"
+                Clicked="OnTrayClicked">
         <TrayIcon.Menu>
           <NativeMenu>
-            <NativeMenuItem Header="Exit ImageZeus" Click="OnTrayExitClick" />
+            <NativeMenuItem Header="Open ImageZeus" Click="OnTrayOpenClick" />
+            <NativeMenuItemSeparator />
+            <NativeMenuItem Header="Exit" Click="OnTrayExitClick" />
           </NativeMenu>
         </TrayIcon.Menu>
       </TrayIcon>

@@ -8,6 +8,8 @@ Fast, lightweight Windows image viewer built with C# and Avalonia.
 
 Grab the latest `ImageZeusSetup.exe` from the [Releases](https://github.com/iopowerflower/ImageZeus/releases) page.
 
+> **Windows SmartScreen warning:** Because the installer isn't code-signed, Windows may show "Windows protected your PC" when you run it. Click **More info** → **Run anyway** to proceed. This is normal for unsigned open-source apps.
+
 ## Features
 
 - WebP, GIF, PNG, JPEG, BMP, TIFF support with animated GIF/WebP playback
