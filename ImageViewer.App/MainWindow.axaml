@@ -1,0 +1,207 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:ImageViewer.App.ViewModels"
+        mc:Ignorable="d"
+        x:Class="ImageViewer.App.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Width="1200"
+        Height="800"
+        Title="{Binding WindowTitle}"
+        WindowStartupLocation="CenterScreen"
+        Background="#0D1117">
+
+  <DockPanel>
+    <!-- Left Side Panel -->
+    <Border Classes="sidePanel"
+            DockPanel.Dock="Left"
+            Width="210"
+            IsVisible="{Binding IsSidePanelOpen}"
+            Background="#161B22"
+            BorderBrush="#21262D"
+            BorderThickness="0,0,1,0"
+            Padding="12,14">
+      <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="6">
+
+          <!-- Edit Tools Section -->
+          <TextBlock Classes="sectionHeader" Text="EDIT TOOLS" />
+          <StackPanel Spacing="4">
+            <Button Content="Rotate CW" Click="OnRotateCwClick" HorizontalAlignment="Stretch" />
+            <Button Content="Rotate CCW" Click="OnRotateCcwClick" HorizontalAlignment="Stretch" />
+            <Button Content="Flip Horizontal" Click="OnFlipHorizontalClick" HorizontalAlignment="Stretch" />
+            <Button Content="Flip Vertical" Click="OnFlipVerticalClick" HorizontalAlignment="Stretch" />
+          </StackPanel>
+
+          <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+            <Button Classes="saveBtn" Content="Save" Click="OnSaveClick" HorizontalAlignment="Stretch" />
+            <Button Classes="saveBtn" Content="Save As..." Click="OnSaveAsClick" HorizontalAlignment="Stretch" />
+          </StackPanel>
+
+          <!-- Divider -->
+          <Border Height="1" Background="#21262D" Margin="0,8" />
+
+          <!-- Caps Tool Section -->
+          <TextBlock Classes="capsHeader" Text="CAPS TOOL" />
+          <CheckBox Name="CapsActiveCheckbox" Content="Enable Caps"
+                    Checked="OnCapsActiveChanged" Unchecked="OnCapsActiveChanged" />
+
+          <!-- Aspect Ratio -->
+          <CheckBox Name="CapsAspectCheckbox" Content="Aspect Ratio"
+                    Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
+          <StackPanel Orientation="Horizontal" Spacing="4"
+                      IsVisible="{Binding #CapsAspectCheckbox.IsChecked}" Margin="16,0,0,0">
+            <TextBox Name="CapsAspectX" Width="44" />
+            <TextBlock Classes="label" Text=":" VerticalAlignment="Center" />
+            <TextBox Name="CapsAspectY" Width="44" />
+          </StackPanel>
+
+          <!-- Fixed Size -->
+          <CheckBox Name="CapsFixedCheckbox" Content="Fixed Size"
+                    Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
+          <StackPanel Orientation="Horizontal" Spacing="4"
+                      IsVisible="{Binding #CapsFixedCheckbox.IsChecked}" Margin="16,0,0,0">
+            <TextBox Name="CapsFixedW" Width="50" />
+            <TextBlock Classes="label" Text="x" VerticalAlignment="Center" />
+            <TextBox Name="CapsFixedH" Width="50" />
+          </StackPanel>
+
+          <!-- Post-resize -->
+          <CheckBox Name="CapsResizeCheckbox" Content="Resize Largest Dim"
+                    Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
+          <StackPanel Orientation="Horizontal" Spacing="4"
+                      IsVisible="{Binding #CapsResizeCheckbox.IsChecked}" Margin="16,0,0,0">
+            <TextBox Name="CapsResizeValue" Width="56" />
+            <TextBlock Classes="label" Text="px" VerticalAlignment="Center" />
+          </StackPanel>
+
+          <!-- Output format -->
+          <TextBlock Classes="label" Text="Output Format" Margin="0,4,0,2" />
+          <ComboBox Name="CapsFormatCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
+            <ComboBoxItem Content="Same as Source" />
+            <ComboBoxItem Content="PNG" />
+            <ComboBoxItem Content="JPEG" />
+            <ComboBoxItem Content="WebP" />
+          </ComboBox>
+
+          <!-- Save Caps -->
+          <CheckBox Name="CapsSaveCheckbox" Content="Save Caps"
+                    Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
+          <StackPanel Spacing="4" IsVisible="{Binding #CapsSaveCheckbox.IsChecked}" Margin="16,0,0,0">
+            <TextBox Name="CapsSaveDir" Watermark="Destination folder..." IsReadOnly="True" />
+            <Button Content="Browse..." Click="OnCapsBrowseClick" HorizontalAlignment="Stretch" />
+          </StackPanel>
+
+          <!-- Copy to clipboard -->
+          <CheckBox Name="CapsClipboardCheckbox" Content="Copy to Clipboard" />
+
+          <CheckBox Name="CapsAutoCapCheckbox" Content="Auto Cap" />
+
+          <Button Classes="captureBtn" Content="Capture  [C]" Click="OnCapsCapture"
+                  HorizontalAlignment="Stretch" Margin="0,4,0,0" />
+        </StackPanel>
+      </ScrollViewer>
+    </Border>
+
+    <!-- Main viewer area -->
+    <Grid>
+      <Border Name="ViewerArea"
+              Background="#0D1117"
+              ClipToBounds="True"
+              PointerMoved="OnViewerPointerMoved"
+              PointerWheelChanged="OnViewerPointerWheelChanged"
+              PointerPressed="OnViewerPointerPressed"
+              PointerReleased="OnViewerPointerReleased">
+        <Canvas Name="ImageCanvas" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+          <Image Name="MainImage"
+                 Source="{Binding CurrentImage}"
+                 Stretch="None" />
+        </Canvas>
+      </Border>
+
+      <!-- Caps selection overlay -->
+      <Canvas Name="CapsOverlayCanvas" IsVisible="False" IsHitTestVisible="False">
+        <Border Name="CapsBorder"
+                BorderBrush="#00FF00"
+                BorderThickness="1"
+                IsVisible="False" />
+      </Canvas>
+
+      <!-- Mini Panel top-right -->
+      <Border Name="MiniPanelHitZone"
+              HorizontalAlignment="Right"
+              VerticalAlignment="Top"
+              Margin="0"
+              Padding="12"
+              Background="Transparent"
+              PointerEntered="OnMiniPanelPointerEntered"
+              PointerExited="OnMiniPanelPointerExited">
+        <Border Classes="miniPanel"
+                Name="MiniPanel"
+                Padding="10,8"
+                CornerRadius="10"
+                Background="#D0161B22"
+                BorderBrush="#28333D"
+                BorderThickness="1"
+                Opacity="0">
+          <Border.Transitions>
+            <Transitions>
+              <DoubleTransition Property="Opacity" Duration="0:0:0.3" />
+            </Transitions>
+          </Border.Transitions>
+          <StackPanel Spacing="8">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+              <Button Content="&#9664;" Click="OnPrevClick" />
+              <Button Content="&#9654;" Click="OnNextClick" />
+              <CheckBox Name="MiniPanelLock" Content="Lock" Foreground="#8899AA" FontSize="11" Margin="4,0,0,0" />
+              <Button Content="&#9881;" Click="OnToggleSidePanelClick" />
+            </StackPanel>
+            <TextBlock Name="RatingText" Text="&#9733;&#9733;&#9733;&#9733;&#9733;" Foreground="#E8B830" IsVisible="False" FontSize="14" />
+            <Slider Name="ScrubSlider" Minimum="0" Maximum="0" ValueChanged="OnScrubSliderChanged" />
+            <StackPanel Name="AnimatedControls" Orientation="Horizontal" Spacing="6"
+                        IsVisible="{Binding IsAnimated}">
+              <Button Content="&#9654;/&#9208;" Click="OnPlayPauseClick" />
+              <Slider Name="FrameSlider" Width="120" Minimum="0"
+                      Value="{Binding AnimFrameIndex, Mode=OneWay}"
+                      ValueChanged="OnFrameSliderChanged" />
+            </StackPanel>
+          </StackPanel>
+        </Border>
+      </Border>
+
+      <!-- EXIF overlay -->
+      <Border Name="ExifOverlay"
+              IsVisible="{Binding ShowExif}"
+              Background="#C8101520"
+              VerticalAlignment="Bottom"
+              Padding="12,6"
+              CornerRadius="8,8,0,0"
+              HorizontalAlignment="Center"
+              Margin="0,0,0,0">
+        <TextBlock Text="{Binding ExifText}" Foreground="#90A0B4" FontSize="11.5"
+                   FontFamily="Consolas, Cascadia Mono, monospace" />
+      </Border>
+
+      <!-- Toast indicator -->
+      <Border Name="ToastOverlay"
+              IsVisible="False"
+              Background="#D0161B22"
+              VerticalAlignment="Center"
+              HorizontalAlignment="Center"
+              Padding="20,10"
+              CornerRadius="8"
+              BorderBrush="#28333D"
+              BorderThickness="1"
+              Opacity="0">
+        <Border.Transitions>
+          <Transitions>
+            <DoubleTransition Property="Opacity" Duration="0:0:0.25" />
+          </Transitions>
+        </Border.Transitions>
+        <TextBlock Name="ToastText" Foreground="#C8D0DA" FontSize="14"
+                   FontFamily="Segoe UI, sans-serif" />
+      </Border>
+    </Grid>
+  </DockPanel>
+</Window>

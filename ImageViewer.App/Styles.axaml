@@ -1,0 +1,210 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- ========== Global dark defaults ========== -->
+  <Style Selector="Window">
+    <Setter Property="Background" Value="#0D1117" />
+    <Setter Property="Foreground" Value="#D0D8E0" />
+    <Setter Property="FontSize" Value="13" />
+  </Style>
+
+  <!-- ========== Button (base) ========== -->
+  <Style Selector="Button">
+    <Setter Property="Background" Value="#2A3240" />
+    <Setter Property="Foreground" Value="#D0D8E0" />
+    <Setter Property="BorderBrush" Value="#3A4858" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="Padding" Value="10,5" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+  </Style>
+  <Style Selector="Button:pointerover">
+    <Setter Property="Background" Value="#354050" />
+    <Setter Property="BorderBrush" Value="#5080B0" />
+  </Style>
+  <Style Selector="Button:pressed">
+    <Setter Property="Background" Value="#405060" />
+  </Style>
+  <Style Selector="Button:disabled">
+    <Setter Property="Opacity" Value="0.4" />
+  </Style>
+
+  <!-- ========== CheckBox ========== -->
+  <Style Selector="CheckBox">
+    <Setter Property="Foreground" Value="#B0BCC8" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <!-- ========== TextBox ========== -->
+  <Style Selector="TextBox">
+    <Setter Property="Background" Value="#1A2030" />
+    <Setter Property="Foreground" Value="#D0D8E0" />
+    <Setter Property="BorderBrush" Value="#3A4858" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="6,4" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="CaretBrush" Value="#80B0E0" />
+    <Setter Property="SelectionBrush" Value="#40608A" />
+  </Style>
+  <Style Selector="TextBox:focus">
+    <Setter Property="BorderBrush" Value="#5080B0" />
+  </Style>
+
+  <!-- ========== TextBlock ========== -->
+  <Style Selector="TextBlock">
+    <Setter Property="Foreground" Value="#D0D8E0" />
+  </Style>
+
+  <!-- ========== ComboBox ========== -->
+  <Style Selector="ComboBox">
+    <Setter Property="Background" Value="#1A2030" />
+    <Setter Property="Foreground" Value="#D0D8E0" />
+    <Setter Property="BorderBrush" Value="#3A4858" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Padding" Value="8,4" />
+  </Style>
+
+  <!-- ========== Slider ========== -->
+  <Style Selector="Slider">
+    <Setter Property="Foreground" Value="#5080B0" />
+    <Setter Property="Background" Value="#2A3240" />
+  </Style>
+
+  <!-- ========== ScrollViewer / ScrollBar ========== -->
+  <Style Selector="ScrollBar">
+    <Setter Property="Background" Value="Transparent" />
+  </Style>
+
+  <!-- ========== ContextMenu ========== -->
+  <Style Selector="ContextMenu">
+    <Setter Property="Background" Value="#1C2230" />
+    <Setter Property="BorderBrush" Value="#2A3A4A" />
+    <Setter Property="BorderThickness" Value="1" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="2" />
+  </Style>
+
+  <Style Selector="MenuItem">
+    <Setter Property="Foreground" Value="#D0D8E0" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Padding" Value="10,5" />
+  </Style>
+  <Style Selector="MenuItem:pointerover">
+    <Setter Property="Background" Value="#2A3A50" />
+  </Style>
+
+  <Style Selector="Separator">
+    <Setter Property="Background" Value="#2A3A4A" />
+    <Setter Property="Height" Value="1" />
+    <Setter Property="Margin" Value="4,2" />
+  </Style>
+
+  <!-- ========== Side panel overrides ========== -->
+  <Style Selector="Border.sidePanel Button">
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Background" Value="#2A3240" />
+    <Setter Property="Foreground" Value="#D0D8E0" />
+    <Setter Property="BorderBrush" Value="#3A4858" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Border.sidePanel Button:pointerover">
+    <Setter Property="Background" Value="#354050" />
+    <Setter Property="BorderBrush" Value="#5080B0" />
+  </Style>
+  <Style Selector="Border.sidePanel Button:pressed">
+    <Setter Property="Background" Value="#405060" />
+  </Style>
+
+  <!-- Mini panel buttons -->
+  <Style Selector="Border.miniPanel Button">
+    <Setter Property="Padding" Value="6,4" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="MinWidth" Value="32" />
+    <Setter Property="MinHeight" Value="28" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Background" Value="#303A48" />
+    <Setter Property="Foreground" Value="#D0D8E0" />
+    <Setter Property="BorderBrush" Value="#48586A" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Border.miniPanel Button:pointerover">
+    <Setter Property="Background" Value="#3A4A5C" />
+    <Setter Property="BorderBrush" Value="#6090C0" />
+  </Style>
+
+  <!-- Capture button -->
+  <Style Selector="Button.captureBtn">
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Background" Value="#1A3D1A" />
+    <Setter Property="Foreground" Value="#50FF50" />
+    <Setter Property="BorderBrush" Value="#2A6A2A" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Button.captureBtn:pointerover">
+    <Setter Property="Background" Value="#245024" />
+    <Setter Property="BorderBrush" Value="#40A040" />
+  </Style>
+  <Style Selector="Button.captureBtn:pressed">
+    <Setter Property="Background" Value="#306030" />
+  </Style>
+
+  <!-- Save buttons -->
+  <Style Selector="Button.saveBtn">
+    <Setter Property="Padding" Value="12,6" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Background" Value="#1A2A4D" />
+    <Setter Property="Foreground" Value="#80B0F0" />
+    <Setter Property="BorderBrush" Value="#2A4070" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Button.saveBtn:pointerover">
+    <Setter Property="Background" Value="#243A60" />
+    <Setter Property="BorderBrush" Value="#4080C0" />
+  </Style>
+
+  <!-- Section header text -->
+  <Style Selector="TextBlock.sectionHeader">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="#90A0B4" />
+    <Setter Property="Margin" Value="0,4,0,2" />
+  </Style>
+
+  <!-- Caps section header -->
+  <Style Selector="TextBlock.capsHeader">
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Foreground" Value="#40C040" />
+    <Setter Property="Margin" Value="0,2,0,2" />
+  </Style>
+
+  <!-- Side panel checkboxes -->
+  <Style Selector="Border.sidePanel CheckBox">
+    <Setter Property="Foreground" Value="#B0BCC8" />
+    <Setter Property="FontSize" Value="12" />
+  </Style>
+
+  <!-- Side panel text inputs -->
+  <Style Selector="Border.sidePanel TextBox">
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="CornerRadius" Value="4" />
+    <Setter Property="Padding" Value="6,4" />
+  </Style>
+
+  <!-- Label text -->
+  <Style Selector="Border.sidePanel TextBlock.label">
+    <Setter Property="Foreground" Value="#8090A0" />
+    <Setter Property="FontSize" Value="11" />
+  </Style>
+
+</Styles>
