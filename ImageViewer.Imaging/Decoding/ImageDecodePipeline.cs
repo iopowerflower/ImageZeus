@@ -11,7 +11,7 @@ public sealed class ImageDecodePipeline
     private readonly RefCountedImageCache _cache;
     private readonly DecodeLimits _limits;
     private readonly ICrashLogger _crashLogger;
-    private readonly ConcurrentDictionary<string, Task<ImageCacheLease>> _inFlight = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, Task> _inFlight = new(StringComparer.OrdinalIgnoreCase);
 
     public ImageDecodePipeline(
         IImageDecoder decoder,
@@ -47,18 +47,17 @@ public sealed class ImageDecodePipeline
         if (_cache.TryAcquire(key, out var cachedLease) && cachedLease is not null)
             return cachedLease;
 
-        var decodeTask = _inFlight.GetOrAdd(key, _ => DecodeAndAcquireAsync(key));
+        var decodeTask = _inFlight.GetOrAdd(key, _ => DecodeAsync(key));
 
         if (decodeTask.IsFaulted)
         {
             _inFlight.TryRemove(key, out _);
-            decodeTask = _inFlight.GetOrAdd(key, _ => DecodeAndAcquireAsync(key));
+            decodeTask = _inFlight.GetOrAdd(key, _ => DecodeAsync(key));
         }
 
-        ImageCacheLease lease;
         try
         {
-            lease = await decodeTask.WaitAsync(cancellationToken);
+            await decodeTask.WaitAsync(cancellationToken);
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
@@ -70,27 +69,18 @@ public sealed class ImageDecodePipeline
                 _inFlight.TryRemove(key, out _);
         }
 
-        if (_cache.TryAcquire(key, out var freshLease) && freshLease is not null)
-            return freshLease;
+        if (_cache.TryAcquire(key, out var lease) && lease is not null)
+            return lease;
 
-        return lease;
+        throw new InvalidOperationException($"Decode completed but cache acquire failed for '{key}'.");
     }
 
-    private async Task<ImageCacheLease> DecodeAndAcquireAsync(string key)
+    private async Task DecodeAsync(string key)
     {
         try
         {
             var decoded = await _decoder.DecodeAsync(key, _limits, CancellationToken.None);
             _cache.Put(key, decoded);
-
-            if (_cache.TryAcquire(key, out var lease) && lease is not null)
-                return lease;
-
-            throw new InvalidOperationException($"Cache put succeeded but acquire failed for '{key}'.");
-        }
-        catch (InvalidOperationException)
-        {
-            throw;
         }
         catch (Exception ex)
         {

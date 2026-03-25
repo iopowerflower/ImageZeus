@@ -33,6 +33,9 @@ public partial class MainWindow : Window
     private Size _preFullscreenSize;
 
     private bool _miniPanelInteracting;
+    private bool _scrubBarInteracting;
+    private bool _syncingScrubSliders;
+    private CancellationTokenSource? _scrubBarFadeCts;
     private CancellationTokenSource? _toastCts;
     private Avalonia.PixelSize _lastFitSize;
 
@@ -60,6 +63,8 @@ public partial class MainWindow : Window
 
         MiniPanelHitZone.AddHandler(PointerPressedEvent, OnMiniPanelPointerPressed, handledEventsToo: true);
         MiniPanelHitZone.AddHandler(PointerReleasedEvent, OnMiniPanelPointerReleased, handledEventsToo: true);
+        ScrubBarHitZone.AddHandler(PointerPressedEvent, OnScrubBarPointerPressed, handledEventsToo: true);
+        ScrubBarHitZone.AddHandler(PointerReleasedEvent, OnScrubBarPointerReleased, handledEventsToo: true);
 
         CapsFormatCombo.SelectionChanged += (_, _) => SaveCapsSettings();
         CapsClipboardCheckbox.IsCheckedChanged += (_, _) => SaveCapsSettings();
@@ -113,6 +118,9 @@ public partial class MainWindow : Window
     {
         if (ViewModel is not null)
             ViewModel.PropertyChanged -= OnViewModelPropertyChanged;
+        _scrubBarFadeCts?.Cancel();
+        _scrubBarFadeCts?.Dispose();
+        _scrubBarFadeCts = null;
     }
 
     private async void OnWindowKeyDown(object? sender, KeyEventArgs e)
@@ -271,15 +279,24 @@ public partial class MainWindow : Window
 
     private void UpdateScrubRange()
     {
+        _syncingScrubSliders = true;
         if (ViewModel is null)
         {
             ScrubSlider.Maximum = 0;
             ScrubSlider.Value = 0;
+            BottomScrubSlider.Maximum = 0;
+            BottomScrubSlider.Value = 0;
+            _syncingScrubSliders = false;
             return;
         }
 
-        ScrubSlider.Maximum = Math.Max(0, ViewModel.ImageCount - 1);
-        ScrubSlider.Value = Math.Clamp(ViewModel.CurrentIndex, 0, Math.Max(0, ViewModel.ImageCount - 1));
+        var max = Math.Max(0, ViewModel.ImageCount - 1);
+        var value = Math.Clamp(ViewModel.CurrentIndex, 0, max);
+        ScrubSlider.Maximum = max;
+        ScrubSlider.Value = value;
+        BottomScrubSlider.Maximum = max;
+        BottomScrubSlider.Value = value;
+        _syncingScrubSliders = false;
     }
 
     private async void OnPrevClick(object? sender, RoutedEventArgs e)
@@ -498,7 +515,11 @@ public partial class MainWindow : Window
 
     private async void OnScrubSliderChanged(object? sender, RangeBaseValueChangedEventArgs e)
     {
-        if (!_uiReady || ViewModel is null) return;
+        if (!_uiReady || ViewModel is null || _syncingScrubSliders) return;
+
+        _syncingScrubSliders = true;
+        BottomScrubSlider.Value = e.NewValue;
+        _syncingScrubSliders = false;
 
         var idx = (int)Math.Round(e.NewValue);
         await RunLoggedAsync(async () =>
@@ -506,6 +527,86 @@ public partial class MainWindow : Window
             await ViewModel.SetIndexAsync(idx);
             RefitImage();
         }, "Scrub slider");
+    }
+
+    private async void OnBottomScrubSliderChanged(object? sender, RangeBaseValueChangedEventArgs e)
+    {
+        if (!_uiReady || ViewModel is null || _syncingScrubSliders) return;
+
+        ShowScrubBar();
+        ScheduleScrubBarFade(force: true, delayMs: 300);
+
+        _syncingScrubSliders = true;
+        ScrubSlider.Value = e.NewValue;
+        _syncingScrubSliders = false;
+
+        var idx = (int)Math.Round(e.NewValue);
+        await RunLoggedAsync(async () =>
+        {
+            await ViewModel.SetIndexAsync(idx);
+            RefitImage();
+        }, "Bottom scrub slider");
+    }
+
+    private void OnScrubBarPointerEntered(object? sender, PointerEventArgs e)
+    {
+        ShowScrubBar();
+    }
+
+    private void OnScrubBarPointerExited(object? sender, PointerEventArgs e)
+    {
+        ScheduleScrubBarFade(force: true);
+    }
+
+    private void OnScrubBarPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _scrubBarInteracting = true;
+        ShowScrubBar();
+    }
+
+    private async void OnScrubBarPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _scrubBarInteracting = false;
+        ScheduleScrubBarFade(force: true);
+
+        await RunLoggedAsync(async () =>
+        {
+            if (ViewModel is null) return;
+            await ViewModel.EnsureCurrentLoadedAsync();
+            RefitImage();
+        }, "Ensure current after bottom scrub");
+    }
+
+    private void ShowScrubBar()
+    {
+        _scrubBarFadeCts?.Cancel();
+        ScrubBar.Opacity = 0.75;
+    }
+
+    private void ScheduleScrubBarFade(bool force, int delayMs = 0)
+    {
+        _scrubBarFadeCts?.Cancel();
+        _scrubBarFadeCts?.Dispose();
+        _scrubBarFadeCts = new CancellationTokenSource();
+        var token = _scrubBarFadeCts.Token;
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                if (delayMs > 0)
+                    await Task.Delay(delayMs, token);
+                Dispatcher.UIThread.Post(() =>
+                {
+                    if (token.IsCancellationRequested) return;
+                    if (!force && _scrubBarInteracting) return;
+                    ScrubBar.Opacity = 0;
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }, token);
     }
 
     private void OnRotateCwClick(object? sender, RoutedEventArgs e)

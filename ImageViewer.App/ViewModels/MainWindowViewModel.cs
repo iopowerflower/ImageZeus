@@ -240,44 +240,81 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
             var settingsTask = _services.SettingsStore.LoadAsync(CancellationToken.None);
 
-            Task<IReadOnlyList<ImageEntry>>? indexTask = null;
-            if (!string.IsNullOrWhiteSpace(firstFile))
-            {
-                indexTask = Task.Run(async () =>
-                {
-                    var raw = await _services.RatingService.GetAllRatingsAsync(CancellationToken.None);
-                    var ratings = raw.ToDictionary(
-                        kv => kv.Key,
-                        kv => (uint?)kv.Value,
-                        StringComparer.OrdinalIgnoreCase);
-                    return _indexBuilder.Build(firstFile, ratings);
-                });
-            }
-
             _settings = await settingsTask;
             IsSidePanelOpen = _settings.IsSidePanelOpen;
 
-            if (string.IsNullOrWhiteSpace(firstFile) || indexTask is null)
+            if (string.IsNullOrWhiteSpace(firstFile))
             {
                 OnPropertyChanged(nameof(WindowTitle));
                 return;
             }
 
-            var images = await indexTask;
-            _images = _imageSorter.Sort(images, _settings.SortField, _settings.SortDirection);
-            _currentIndex = _images.ToList().FindIndex(x => x.FullPath.Equals(Path.GetFullPath(firstFile), StringComparison.OrdinalIgnoreCase));
+            var fullFirst = Path.GetFullPath(firstFile);
+
+            var ratingsTask = _services.RatingService.GetAllRatingsAsync(CancellationToken.None);
+            var decodeTask = _services.DecodePipeline.LoadAsync(fullFirst, CancellationToken.None);
+
+            var raw = await ratingsTask;
+            var ratings = raw.ToDictionary(
+                kv => kv.Key, kv => (uint?)kv.Value, StringComparer.OrdinalIgnoreCase);
+
+            var fastImages = _indexBuilder.BuildFast(firstFile, ratings);
+            _images = _imageSorter.Sort(fastImages, _settings.SortField, _settings.SortDirection);
+            _currentIndex = _images.ToList().FindIndex(
+                x => x.FullPath.Equals(fullFirst, StringComparison.OrdinalIgnoreCase));
             if (_currentIndex < 0 && _images.Count > 0)
                 _currentIndex = 0;
 
-            _currentFolder = Path.GetDirectoryName(Path.GetFullPath(firstFile));
-            StartDirectoryRefreshTimer();
-
+            _currentFolder = Path.GetDirectoryName(fullFirst);
             RaiseNavigationProperties();
-            await LoadCurrentAsync();
+
+            try
+            {
+                var lease = await decodeTask;
+                Interlocked.Increment(ref _loadGeneration);
+                Volatile.Write(ref _appliedGeneration, _loadGeneration);
+                ApplyLease(lease, 0);
+            }
+            catch (Exception ex)
+            {
+                _services.CrashLogger.Log(ex, "Decode first image");
+            }
+
+            _ = Task.Run(() => BackfillMetadataAsync(fullFirst, ratings));
+
+            StartDirectoryRefreshTimer();
         }
         catch (Exception ex)
         {
             _services.CrashLogger.Log(ex, "Initialize main window view model");
+        }
+    }
+
+    private async Task BackfillMetadataAsync(string selectedPath, Dictionary<string, uint?> ratings)
+    {
+        try
+        {
+            var fullImages = await Task.Run(() => _indexBuilder.Build(selectedPath, ratings));
+
+            await Dispatcher.UIThread.InvokeAsync(() =>
+            {
+                var currentPath = CurrentEntry?.FullPath;
+                _images = _imageSorter.Sort(fullImages, _settings.SortField, _settings.SortDirection);
+
+                if (currentPath is not null)
+                {
+                    _currentIndex = _images.ToList().FindIndex(
+                        x => x.FullPath.Equals(currentPath, StringComparison.OrdinalIgnoreCase));
+                }
+                if (_currentIndex < 0 && _images.Count > 0)
+                    _currentIndex = 0;
+
+                RaiseNavigationProperties();
+            });
+        }
+        catch (Exception ex)
+        {
+            _services.CrashLogger.Log(ex, "Backfill metadata");
         }
     }
 

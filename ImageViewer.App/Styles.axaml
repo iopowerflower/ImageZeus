@@ -73,6 +73,23 @@
     <Setter Property="Foreground" Value="#5080B0" />
     <Setter Property="Background" Value="#2A3240" />
   </Style>
+  <Style Selector="Slider.scrubBar">
+    <Setter Property="MinHeight" Value="26" />
+    <Setter Property="Height" Value="26" />
+    <Setter Property="Foreground" Value="#6EA0D8" />
+    <Setter Property="Background" Value="#2F3C4F" />
+  </Style>
+  <Style Selector="Slider.scrubBar /template/ Track#PART_Track">
+    <Setter Property="Height" Value="6" />
+  </Style>
+  <Style Selector="Slider.scrubBar /template/ Thumb">
+    <Setter Property="Width" Value="16" />
+    <Setter Property="Height" Value="16" />
+  </Style>
+  <Style Selector="Slider.scrubBar /template/ Thumb:pointerover">
+    <Setter Property="Width" Value="18" />
+    <Setter Property="Height" Value="18" />
+  </Style>
 
   <!-- ========== ScrollViewer / ScrollBar ========== -->
   <Style Selector="ScrollBar">

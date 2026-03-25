@@ -201,6 +201,42 @@
                    FontFamily="Consolas, Cascadia Mono, monospace" />
       </Border>
 
+      <!-- Bottom scrub bar -->
+      <Border Name="ScrubBarHitZone"
+              VerticalAlignment="Bottom"
+              HorizontalAlignment="Stretch"
+              Height="58"
+              Margin="0,0,0,6"
+              Padding="10"
+              Background="Transparent"
+              PointerEntered="OnScrubBarPointerEntered"
+              PointerExited="OnScrubBarPointerExited">
+        <Grid ColumnDefinitions="1*,3*,1*">
+          <Border Name="ScrubBar"
+                  Grid.Column="1"
+                  HorizontalAlignment="Stretch"
+                  VerticalAlignment="Bottom"
+                  MinWidth="280"
+                  Padding="14,9"
+                  CornerRadius="10"
+                  Background="#BF161B22"
+                  BorderBrush="#28333D"
+                  BorderThickness="1"
+                  Opacity="0">
+            <Border.Transitions>
+              <Transitions>
+                <DoubleTransition Property="Opacity" Duration="0:0:0.3" />
+              </Transitions>
+            </Border.Transitions>
+            <Slider Name="BottomScrubSlider"
+                    Classes="scrubBar"
+                    Minimum="0"
+                    Maximum="0"
+                    ValueChanged="OnBottomScrubSliderChanged" />
+          </Border>
+        </Grid>
+      </Border>
+
       <!-- Toast indicator -->
       <Border Name="ToastOverlay"
               IsVisible="False"
