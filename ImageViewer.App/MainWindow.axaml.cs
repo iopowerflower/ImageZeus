@@ -21,6 +21,8 @@ public partial class MainWindow : Window
 {
     private MenuItem? _zoomFixMenuItem;
     private MenuItem? _fullscreenMenuItem;
+    private MenuItem? _sortDirectionMenuItem;
+    private readonly List<(MenuItem Item, SortField Field, string Label)> _sortFieldMenuItems = new();
     private bool _isFullscreen;
     private bool _isPanning;
     private Point _lastPanPoint;
@@ -89,6 +91,22 @@ public partial class MainWindow : Window
                 UpdateScrubRange();
             }, "Main window opened");
         }, DispatcherPriority.Background);
+
+        FlashMiniPanel();
+    }
+
+    private void FlashMiniPanel()
+    {
+        MiniPanel.Opacity = 1;
+        _ = Task.Run(async () =>
+        {
+            await Task.Delay(500);
+            Dispatcher.UIThread.Post(() =>
+            {
+                if (MiniPanelLock.IsChecked != true && !_miniPanelInteracting)
+                    MiniPanel.Opacity = 0;
+            });
+        });
     }
 
     private void OnWindowClosing(object? sender, WindowClosingEventArgs e)
@@ -204,6 +222,11 @@ public partial class MainWindow : Window
         {
             FrameSlider.Maximum = Math.Max(0, (ViewModel?.AnimFrameCount ?? 1) - 1);
         }
+
+        if (e.PropertyName is nameof(MainWindowViewModel.CurrentRating))
+        {
+            SyncStarButtons();
+        }
     }
 
     private void PositionImage()
@@ -283,6 +306,41 @@ public partial class MainWindow : Window
     {
         ViewModel?.ToggleSidePanel();
         Dispatcher.UIThread.Post(RefitImage, DispatcherPriority.Render);
+    }
+
+    private async void OnStarClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button btn) return;
+        uint stars;
+        if (btn.Tag is string tagStr)
+        {
+            if (!uint.TryParse(tagStr, out stars)) return;
+        }
+        else if (btn.Tag is int intVal)
+        {
+            stars = (uint)intVal;
+        }
+        else return;
+
+        await RunLoggedAsync(async () =>
+        {
+            if (ViewModel is null) return;
+            var newRating = ViewModel.CurrentRating == stars ? 0u : stars;
+            await ViewModel.SetRatingAsync(newRating);
+        }, "Star rating click");
+    }
+
+    private void SyncStarButtons()
+    {
+        var rating = ViewModel?.CurrentRating ?? 0;
+        Button[] stars = [Star1, Star2, Star3, Star4, Star5];
+        for (var i = 0; i < stars.Length; i++)
+        {
+            if (i < rating)
+                stars[i].Classes.Add("active");
+            else
+                stars[i].Classes.Remove("active");
+        }
     }
 
     private void OnMiniPanelPointerEntered(object? sender, PointerEventArgs e)
@@ -578,7 +636,16 @@ public partial class MainWindow : Window
         else if (CapsAspectCheckbox.IsChecked == true && sender == CapsAspectCheckbox)
             CapsFixedCheckbox.IsChecked = false;
 
+        SyncCapsPanelVisibility();
         SaveCapsSettings();
+    }
+
+    private void SyncCapsPanelVisibility()
+    {
+        CapsAspectPanel.IsVisible = CapsAspectCheckbox.IsChecked == true;
+        CapsFixedPanel.IsVisible = CapsFixedCheckbox.IsChecked == true;
+        CapsResizePanel.IsVisible = CapsResizeCheckbox.IsChecked == true;
+        CapsSavePanel.IsVisible = CapsSaveCheckbox.IsChecked == true;
     }
 
     private void LoadCapsSettings()
@@ -614,6 +681,8 @@ public partial class MainWindow : Window
 
         CapsClipboardCheckbox.IsChecked = caps.CopyToClipboard;
         CapsAutoCapCheckbox.IsChecked = caps.AutoCap;
+
+        SyncCapsPanelVisibility();
     }
 
     private void SaveCapsSettings()
@@ -940,23 +1009,42 @@ public partial class MainWindow : Window
     private MenuItem MakeSortMenuItem(string label, SortField field)
     {
         var menuItem = new MenuItem { Header = label };
+        _sortFieldMenuItems.Add((menuItem, field, label));
         menuItem.Click += async (_, _) => await RunLoggedAsync(async () =>
         {
             await (ViewModel?.SetSortAsync(field) ?? Task.CompletedTask);
+            SyncSortFieldLabels();
             RefitImage();
         }, $"Sort {label}");
         return menuItem;
     }
 
+    private void SyncSortFieldLabels()
+    {
+        var current = ViewModel?.SortField ?? SortField.Name;
+        foreach (var (item, field, label) in _sortFieldMenuItems)
+            item.Header = field == current ? $"{label} ✓" : label;
+    }
+
     private MenuItem MakeSortDirectionToggle()
     {
-        var menuItem = new MenuItem { Header = "Ascending / Descending" };
+        var menuItem = new MenuItem();
+        _sortDirectionMenuItem = menuItem;
+        SyncSortDirectionLabel();
         menuItem.Click += async (_, _) => await RunLoggedAsync(async () =>
         {
             await (ViewModel?.ToggleSortDirectionAsync() ?? Task.CompletedTask);
+            SyncSortDirectionLabel();
             RefitImage();
         }, "Toggle sort direction");
         return menuItem;
+    }
+
+    private void SyncSortDirectionLabel()
+    {
+        if (_sortDirectionMenuItem is null) return;
+        var dir = ViewModel?.SortDirection ?? SortDirection.Ascending;
+        _sortDirectionMenuItem.Header = dir == SortDirection.Ascending ? "Ascending ✓" : "Descending ✓";
     }
 
     private MenuItem MakeRateMenuItem(uint rating)
@@ -975,6 +1063,9 @@ public partial class MainWindow : Window
 
         if (_fullscreenMenuItem is not null)
             _fullscreenMenuItem.IsChecked = _isFullscreen;
+
+        SyncSortFieldLabels();
+        SyncSortDirectionLabel();
     }
 
     #endregion

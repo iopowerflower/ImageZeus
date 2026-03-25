@@ -35,4 +35,4 @@ echo  Publish complete: %PUBLISH_DIR%
 echo  Executable: %PUBLISH_DIR%\ImageZeus.exe
 echo ============================================
 echo.
-pause
+

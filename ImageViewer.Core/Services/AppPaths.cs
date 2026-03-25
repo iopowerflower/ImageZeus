@@ -12,4 +12,6 @@ public static class AppPaths
     public static string GetCrashLogPath() => Path.Combine(GetAppDataDirectory(), "crash.log");
 
     public static string GetSettingsPath() => Path.Combine(GetAppDataDirectory(), "settings.json");
+
+    public static string GetRatingsPath() => Path.Combine(GetAppDataDirectory(), "ratings.json");
 }

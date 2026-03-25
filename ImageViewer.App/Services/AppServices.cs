@@ -17,7 +17,7 @@ public sealed class AppServices
         CrashLogger = new FileCrashLogger(AppPaths.GetCrashLogPath());
         SettingsStore = new JsonSettingsStore(AppPaths.GetSettingsPath());
         ShellService = new WindowsShellService();
-        RatingService = new WindowsRatingService();
+        RatingService = new JsonRatingService(AppPaths.GetRatingsPath());
 
         var cache = new RefCountedImageCache(maxItems: 12);
         var decoder = new SkiaSharpDecoder();

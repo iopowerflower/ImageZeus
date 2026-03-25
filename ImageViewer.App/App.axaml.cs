@@ -150,6 +150,12 @@ public partial class App : Application
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             desktop.Shutdown();
+
+        Task.Run(async () =>
+        {
+            await Task.Delay(2000);
+            Environment.Exit(0);
+        });
     }
 
     private void StartPipeServer()

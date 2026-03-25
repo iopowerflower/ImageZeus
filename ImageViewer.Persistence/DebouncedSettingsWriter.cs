@@ -6,11 +6,6 @@ namespace ImageViewer.Persistence;
 
 public sealed class DebouncedSettingsWriter : IDisposable
 {
-    private static readonly JsonSerializerOptions CloneOptions = new()
-    {
-        PropertyNamingPolicy = JsonNamingPolicy.CamelCase,
-    };
-
     private readonly ISettingsStore _store;
     private readonly ICrashLogger _crashLogger;
     private readonly TimeSpan _debounce;
@@ -64,11 +59,7 @@ public sealed class DebouncedSettingsWriter : IDisposable
     {
         lock (_gate)
         {
-            if (_disposed)
-            {
-                return;
-            }
-
+            if (_disposed) return;
             _disposed = true;
             _pendingWriteCts?.Cancel();
             _pendingWriteCts?.Dispose();
@@ -78,15 +69,15 @@ public sealed class DebouncedSettingsWriter : IDisposable
 
     private static ViewerSettings CloneSettings(ViewerSettings source)
     {
-        var bytes = JsonSerializer.SerializeToUtf8Bytes(source, CloneOptions);
-        return JsonSerializer.Deserialize<ViewerSettings>(bytes, CloneOptions) ?? new ViewerSettings();
+        var bytes = JsonSerializer.SerializeToUtf8Bytes(
+            source, PersistenceJsonContext.Default.ViewerSettings);
+        return JsonSerializer.Deserialize(
+            bytes, PersistenceJsonContext.Default.ViewerSettings) ?? new ViewerSettings();
     }
 
     private void ThrowIfDisposed()
     {
         if (_disposed)
-        {
             throw new ObjectDisposedException(nameof(DebouncedSettingsWriter));
-        }
     }
 }

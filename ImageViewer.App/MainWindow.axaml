@@ -25,6 +25,19 @@
       <ScrollViewer VerticalScrollBarVisibility="Auto">
         <StackPanel Spacing="6">
 
+          <!-- Rating -->
+          <TextBlock Classes="sectionHeader" Text="RATING" />
+          <StackPanel Name="RatingStars" Orientation="Horizontal" Spacing="2" Margin="0,0,0,4">
+            <Button Name="Star1" Content="&#9733;" Classes="starBtn" Click="OnStarClick" Tag="1" />
+            <Button Name="Star2" Content="&#9733;" Classes="starBtn" Click="OnStarClick" Tag="2" />
+            <Button Name="Star3" Content="&#9733;" Classes="starBtn" Click="OnStarClick" Tag="3" />
+            <Button Name="Star4" Content="&#9733;" Classes="starBtn" Click="OnStarClick" Tag="4" />
+            <Button Name="Star5" Content="&#9733;" Classes="starBtn" Click="OnStarClick" Tag="5" />
+          </StackPanel>
+
+          <!-- Divider -->
+          <Border Height="1" Background="#21262D" Margin="0,4" />
+
           <!-- Edit Tools Section -->
           <TextBlock Classes="sectionHeader" Text="EDIT TOOLS" />
           <StackPanel Spacing="4">
@@ -50,8 +63,8 @@
           <!-- Aspect Ratio -->
           <CheckBox Name="CapsAspectCheckbox" Content="Aspect Ratio"
                     Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
-          <StackPanel Orientation="Horizontal" Spacing="4"
-                      IsVisible="{Binding #CapsAspectCheckbox.IsChecked, TargetNullValue=False, FallbackValue=False}" Margin="16,0,0,0">
+          <StackPanel Name="CapsAspectPanel" Orientation="Horizontal" Spacing="4"
+                      IsVisible="False" Margin="16,0,0,0">
             <TextBox Name="CapsAspectX" Width="44" />
             <TextBlock Classes="label" Text=":" VerticalAlignment="Center" />
             <TextBox Name="CapsAspectY" Width="44" />
@@ -60,8 +73,8 @@
           <!-- Fixed Size -->
           <CheckBox Name="CapsFixedCheckbox" Content="Fixed Size"
                     Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
-          <StackPanel Orientation="Horizontal" Spacing="4"
-                      IsVisible="{Binding #CapsFixedCheckbox.IsChecked, TargetNullValue=False, FallbackValue=False}" Margin="16,0,0,0">
+          <StackPanel Name="CapsFixedPanel" Orientation="Horizontal" Spacing="4"
+                      IsVisible="False" Margin="16,0,0,0">
             <TextBox Name="CapsFixedW" Width="50" />
             <TextBlock Classes="label" Text="x" VerticalAlignment="Center" />
             <TextBox Name="CapsFixedH" Width="50" />
@@ -70,8 +83,8 @@
           <!-- Post-resize -->
           <CheckBox Name="CapsResizeCheckbox" Content="Resize Largest Dim"
                     Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
-          <StackPanel Orientation="Horizontal" Spacing="4"
-                      IsVisible="{Binding #CapsResizeCheckbox.IsChecked, TargetNullValue=False, FallbackValue=False}" Margin="16,0,0,0">
+          <StackPanel Name="CapsResizePanel" Orientation="Horizontal" Spacing="4"
+                      IsVisible="False" Margin="16,0,0,0">
             <TextBox Name="CapsResizeValue" Width="56" />
             <TextBlock Classes="label" Text="px" VerticalAlignment="Center" />
           </StackPanel>
@@ -88,7 +101,7 @@
           <!-- Save Caps -->
           <CheckBox Name="CapsSaveCheckbox" Content="Save Caps"
                     Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
-          <StackPanel Spacing="4" IsVisible="{Binding #CapsSaveCheckbox.IsChecked, TargetNullValue=False, FallbackValue=False}" Margin="16,0,0,0">
+          <StackPanel Name="CapsSavePanel" Spacing="4" IsVisible="False" Margin="16,0,0,0">
             <TextBox Name="CapsSaveDir" Watermark="Destination folder..." IsReadOnly="True" />
             <Button Content="Browse..." Click="OnCapsBrowseClick" HorizontalAlignment="Stretch" />
           </StackPanel>
@@ -187,8 +200,9 @@
       <Border Name="ToastOverlay"
               IsVisible="False"
               Background="#D0161B22"
-              VerticalAlignment="Center"
-              HorizontalAlignment="Center"
+              VerticalAlignment="Top"
+              HorizontalAlignment="Right"
+              Margin="0,90,20,0"
               Padding="20,10"
               CornerRadius="8"
               BorderBrush="#28333D"

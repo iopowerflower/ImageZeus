@@ -47,6 +47,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private int _animFrameIndex;
     private bool _isAnimPlaying;
     private bool _isAnimated;
+    private uint _currentRating;
+
+    private DispatcherTimer? _dirRefreshTimer;
+    private string? _currentFolder;
 
     public MainWindowViewModel(AppServices services)
     {
@@ -154,9 +158,15 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
-    public string ExifText => CurrentEntry is null
-        ? string.Empty
-        : $"{CurrentEntry.Name} | {CurrentEntry.DateModified:yyyy-MM-dd HH:mm} | {CurrentEntry.SizeBytes / 1024.0:F1} KB";
+    public string ExifText
+    {
+        get
+        {
+            if (CurrentEntry is null) return string.Empty;
+            var dims = _currentLease?.Image is { } img ? $"{img.Width}×{img.Height} | " : "";
+            return $"{CurrentEntry.Name} | {dims}{CurrentEntry.DateModified:yyyy-MM-dd HH:mm} | {CurrentEntry.SizeBytes / 1024.0:F1} KB";
+        }
+    }
 
     public bool IsAnimated
     {
@@ -199,6 +209,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }
     }
 
+    public uint CurrentRating
+    {
+        get => _currentRating;
+        private set
+        {
+            if (_currentRating != value)
+            {
+                _currentRating = value;
+                OnPropertyChanged();
+            }
+        }
+    }
+
     public int CurrentIndex => _currentIndex;
 
     public int ImageCount => _images.Count;
@@ -220,9 +243,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             Task<IReadOnlyList<ImageEntry>>? indexTask = null;
             if (!string.IsNullOrWhiteSpace(firstFile))
             {
-                indexTask = Task.Run(() =>
+                indexTask = Task.Run(async () =>
                 {
-                    var ratings = new Dictionary<string, uint?>(StringComparer.OrdinalIgnoreCase);
+                    var raw = await _services.RatingService.GetAllRatingsAsync(CancellationToken.None);
+                    var ratings = raw.ToDictionary(
+                        kv => kv.Key,
+                        kv => (uint?)kv.Value,
+                        StringComparer.OrdinalIgnoreCase);
                     return _indexBuilder.Build(firstFile, ratings);
                 });
             }
@@ -241,6 +268,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             _currentIndex = _images.ToList().FindIndex(x => x.FullPath.Equals(Path.GetFullPath(firstFile), StringComparison.OrdinalIgnoreCase));
             if (_currentIndex < 0 && _images.Count > 0)
                 _currentIndex = 0;
+
+            _currentFolder = Path.GetDirectoryName(Path.GetFullPath(firstFile));
+            StartDirectoryRefreshTimer();
 
             RaiseNavigationProperties();
             await LoadCurrentAsync();
@@ -262,12 +292,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (raw >= _images.Count)
         {
             raw = 0;
-            wrapMessage = "Last image — wrapping to start";
+            wrapMessage = "First image";
         }
         else if (raw < 0)
         {
             raw = _images.Count - 1;
-            wrapMessage = "First image — wrapping to end";
+            wrapMessage = "Last image";
         }
 
         if (raw == _currentIndex)
@@ -710,18 +740,22 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }, "Delete image");
     }
 
-    public async Task SetRatingAsync(uint rating)
+    public async Task SetRatingAsync(uint stars)
     {
-        var path = CurrentEntry?.FullPath;
-        if (path is null)
-        {
-            return;
-        }
+        var entry = CurrentEntry;
+        if (entry is null) return;
 
         await RunSafeAsync(async () =>
         {
-            await _services.RatingService.SetRatingAsync(path, rating, CancellationToken.None);
-            await LoadFolderAndSelectAsync(path);
+            await _services.RatingService.SetRatingAsync(entry.FullPath, stars, CancellationToken.None);
+            CurrentRating = stars;
+
+            if (_currentIndex >= 0 && _currentIndex < _images.Count)
+            {
+                var list = _images.ToList();
+                list[_currentIndex] = entry with { Rating = stars == 0 ? null : stars };
+                _images = list;
+            }
         }, "Set rating");
     }
 
@@ -859,14 +893,67 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         });
     }
 
+    private void StartDirectoryRefreshTimer()
+    {
+        _dirRefreshTimer?.Stop();
+        _dirRefreshTimer = new DispatcherTimer { Interval = TimeSpan.FromSeconds(3) };
+        _dirRefreshTimer.Tick += async (_, _) => await RefreshDirectoryAsync();
+        _dirRefreshTimer.Start();
+    }
+
+    private async Task RefreshDirectoryAsync()
+    {
+        if (_disposed || _currentFolder is null || !Directory.Exists(_currentFolder)) return;
+
+        try
+        {
+            var currentFiles = new HashSet<string>(
+                Directory.EnumerateFiles(_currentFolder)
+                    .Where(SupportedFormats.IsSupported)
+                    .Select(Path.GetFullPath),
+                StringComparer.OrdinalIgnoreCase);
+
+            var knownFiles = new HashSet<string>(
+                _images.Select(e => e.FullPath),
+                StringComparer.OrdinalIgnoreCase);
+
+            if (currentFiles.SetEquals(knownFiles)) return;
+
+            var selectedPath = CurrentEntry?.FullPath;
+
+            var raw = await _services.RatingService.GetAllRatingsAsync(CancellationToken.None);
+            var ratings = raw.ToDictionary(
+                kv => kv.Key, kv => (uint?)kv.Value, StringComparer.OrdinalIgnoreCase);
+
+            var firstFile = selectedPath ?? currentFiles.FirstOrDefault();
+            if (firstFile is null) return;
+
+            _images = _indexBuilder.Build(firstFile, ratings);
+            _images = _imageSorter.Sort(_images, _settings.SortField, _settings.SortDirection);
+
+            if (selectedPath is not null)
+            {
+                _currentIndex = _images.ToList().FindIndex(
+                    x => x.FullPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase));
+            }
+            if (_currentIndex < 0 && _images.Count > 0)
+                _currentIndex = 0;
+
+            RaiseNavigationProperties();
+        }
+        catch (Exception ex)
+        {
+            _services.CrashLogger.Log(ex, "Directory refresh");
+        }
+    }
+
     public void Dispose()
     {
-        if (_disposed)
-        {
-            return;
-        }
-
+        if (_disposed) return;
         _disposed = true;
+
+        _dirRefreshTimer?.Stop();
+        _dirRefreshTimer = null;
 
         StopAnimation();
 
@@ -884,15 +971,20 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task LoadFolderAndSelectAsync(string selectedPath)
     {
-        var ratings = new Dictionary<string, uint?>(StringComparer.OrdinalIgnoreCase);
+        var raw = await _services.RatingService.GetAllRatingsAsync(CancellationToken.None);
+        var ratings = raw.ToDictionary(
+            kv => kv.Key,
+            kv => (uint?)kv.Value,
+            StringComparer.OrdinalIgnoreCase);
         _images = _indexBuilder.Build(selectedPath, ratings);
         _images = _imageSorter.Sort(_images, _settings.SortField, _settings.SortDirection);
 
         _currentIndex = _images.ToList().FindIndex(x => x.FullPath.Equals(Path.GetFullPath(selectedPath), StringComparison.OrdinalIgnoreCase));
         if (_currentIndex < 0 && _images.Count > 0)
-        {
             _currentIndex = 0;
-        }
+
+        _currentFolder = Path.GetDirectoryName(Path.GetFullPath(selectedPath));
+        StartDirectoryRefreshTimer();
 
         RaiseNavigationProperties();
         await LoadCurrentAsync();
@@ -965,7 +1057,24 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ExifText));
         OnPropertyChanged(nameof(WindowTitle));
 
+        LoadCurrentRating();
         SchedulePreload(navGeneration);
+    }
+
+    private async void LoadCurrentRating()
+    {
+        var path = CurrentEntry?.FullPath;
+        if (path is null) { CurrentRating = 0; return; }
+
+        try
+        {
+            var raw = await _services.RatingService.GetRatingAsync(path, CancellationToken.None);
+            CurrentRating = raw ?? 0;
+        }
+        catch
+        {
+            CurrentRating = 0;
+        }
     }
 
     private void SchedulePreload(long navGeneration)

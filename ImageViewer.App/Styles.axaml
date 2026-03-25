@@ -157,6 +157,26 @@
     <Setter Property="Background" Value="#306030" />
   </Style>
 
+  <!-- Star rating buttons -->
+  <Style Selector="Button.starBtn">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="BorderThickness" Value="0" />
+    <Setter Property="Padding" Value="2,0" />
+    <Setter Property="MinWidth" Value="24" />
+    <Setter Property="MinHeight" Value="24" />
+    <Setter Property="FontSize" Value="20" />
+    <Setter Property="Foreground" Value="#3A4858" />
+    <Setter Property="HorizontalContentAlignment" Value="Center" />
+    <Setter Property="Cursor" Value="Hand" />
+  </Style>
+  <Style Selector="Button.starBtn:pointerover">
+    <Setter Property="Background" Value="Transparent" />
+    <Setter Property="Foreground" Value="#E8B830" />
+  </Style>
+  <Style Selector="Button.starBtn.active">
+    <Setter Property="Foreground" Value="#E8B830" />
+  </Style>
+
   <!-- Save buttons -->
   <Style Selector="Button.saveBtn">
     <Setter Property="Padding" Value="12,6" />
