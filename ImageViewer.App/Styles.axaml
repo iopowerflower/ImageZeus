@@ -157,6 +157,25 @@
     <Setter Property="Background" Value="#306030" />
   </Style>
 
+  <!-- Delete button -->
+  <Style Selector="Button.deleteBtn">
+    <Setter Property="Padding" Value="12,8" />
+    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Background" Value="#3D1A1A" />
+    <Setter Property="Foreground" Value="#FF5050" />
+    <Setter Property="BorderBrush" Value="#6A2A2A" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Button.deleteBtn:pointerover">
+    <Setter Property="Background" Value="#502424" />
+    <Setter Property="BorderBrush" Value="#A04040" />
+  </Style>
+  <Style Selector="Button.deleteBtn:pressed">
+    <Setter Property="Background" Value="#603030" />
+  </Style>
+
   <!-- Star rating buttons -->
   <Style Selector="Button.starBtn">
     <Setter Property="Background" Value="Transparent" />

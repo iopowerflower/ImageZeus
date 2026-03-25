@@ -728,15 +728,32 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public async Task DeleteAsync()
     {
         var path = CurrentEntry?.FullPath;
-        if (path is null)
-        {
-            return;
-        }
+        if (path is null) return;
+
+        var deletedIndex = _currentIndex;
 
         await RunSafeAsync(async () =>
         {
             await _services.ShellService.DeleteToRecycleBinAsync(path, CancellationToken.None);
-            await LoadFolderAndSelectAsync(path);
+
+            var list = _images.ToList();
+            if (deletedIndex >= 0 && deletedIndex < list.Count)
+                list.RemoveAt(deletedIndex);
+            _images = list;
+
+            if (_images.Count == 0)
+            {
+                _currentIndex = -1;
+                _currentLease?.Dispose();
+                _currentLease = null;
+                CurrentImage = null;
+                RaiseNavigationProperties();
+                return;
+            }
+
+            _currentIndex = deletedIndex < _images.Count ? deletedIndex : _images.Count - 1;
+            RaiseNavigationProperties();
+            await LoadCurrentAsync();
         }, "Delete image");
     }
 

@@ -52,6 +52,23 @@ public partial class App : Application
         {
             Services.CrashLogger.Log(e.Exception, "UI thread unhandled exception");
             e.Handled = true;
+
+            try
+            {
+                var window = _viewers.FirstOrDefault().Window;
+                if (window is not null)
+                {
+                    var toast = window.FindControl<Avalonia.Controls.TextBlock>("ToastText");
+                    var overlay = window.FindControl<Avalonia.Controls.Border>("ToastOverlay");
+                    if (toast is not null && overlay is not null)
+                    {
+                        toast.Text = "Something went wrong";
+                        overlay.IsVisible = true;
+                        overlay.Opacity = 1;
+                    }
+                }
+            }
+            catch { /* best effort */ }
         };
 
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

@@ -113,6 +113,11 @@
 
           <Button Classes="captureBtn" Content="Capture  [C]" Click="OnCapsCapture"
                   HorizontalAlignment="Stretch" Margin="0,4,0,0" />
+
+          <!-- Delete -->
+          <Border Height="1" Background="#21262D" Margin="0,8" />
+          <Button Classes="deleteBtn" Content="Delete  [Del]" Click="OnDeleteClick"
+                  HorizontalAlignment="Stretch" />
         </StackPanel>
       </ScrollViewer>
     </Border>

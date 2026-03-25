@@ -749,6 +749,15 @@ public partial class MainWindow : Window
         await PerformCapsCapture();
     }
 
+    private async void OnDeleteClick(object? sender, RoutedEventArgs e)
+    {
+        await RunLoggedAsync(async () =>
+        {
+            await (ViewModel?.DeleteAsync() ?? Task.CompletedTask);
+            RefitImage();
+        }, "Sidebar delete");
+    }
+
     private async Task PerformCapsCapture()
     {
         await RunLoggedAsync(async () =>
@@ -1152,6 +1161,7 @@ public partial class MainWindow : Window
         catch (Exception ex)
         {
             ((App)Application.Current!).Services.CrashLogger.Log(ex, context);
+            ShowToast($"Error: {context}");
         }
     }
 }
