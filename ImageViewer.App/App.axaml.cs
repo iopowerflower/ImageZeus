@@ -1,5 +1,6 @@
 using System.IO.Pipes;
 using System.Runtime.InteropServices;
+using System.Text.Json;
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -7,6 +8,9 @@ using Avalonia.Markup.Xaml;
 using Avalonia.Threading;
 using ImageViewer.App.Services;
 using ImageViewer.App.ViewModels;
+using ImageViewer.Core.Models;
+using ImageViewer.Core.Services;
+using ImageViewer.Persistence;
 
 namespace ImageViewer.App;
 
@@ -19,6 +23,8 @@ public partial class App : Application
 
     public required AppServices Services { get; init; }
     public bool IsDaemonStart { get; init; }
+
+    internal WindowGeometry? LastWindowGeometry { get; set; }
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -75,6 +81,12 @@ public partial class App : Application
         {
             desktop.ShutdownMode = ShutdownMode.OnExplicitShutdown;
 
+            try
+            {
+                LastWindowGeometry = LoadWindowGeometryFromDisk();
+            }
+            catch { /* best effort — use defaults */ }
+
             if (!IsDaemonStart)
             {
                 var filePath = Services.Args.FirstOrDefault(File.Exists);
@@ -95,6 +107,25 @@ public partial class App : Application
         var viewModel = new MainWindowViewModel(childServices);
         var window = new MainWindow { DataContext = viewModel };
 
+        var geo = LastWindowGeometry;
+        if (geo is not null)
+        {
+            window.Width = Math.Max(geo.Width, 200);
+            window.Height = Math.Max(geo.Height, 150);
+
+            if (geo.IsMaximized)
+            {
+                window.WindowStartupLocation = WindowStartupLocation.Manual;
+                window.Position = new PixelPoint(geo.X, geo.Y);
+                window.WindowState = WindowState.Maximized;
+            }
+            else
+            {
+                window.WindowStartupLocation = WindowStartupLocation.Manual;
+                window.Position = new PixelPoint(geo.X, geo.Y);
+            }
+        }
+
         window.Closed += (_, _) =>
         {
             _viewers.RemoveAll(v => ReferenceEquals(v.Window, window));
@@ -111,6 +142,15 @@ public partial class App : Application
             ForceForeground(window);
             window.Topmost = false;
         }, DispatcherPriority.Input);
+    }
+
+    private static WindowGeometry? LoadWindowGeometryFromDisk()
+    {
+        var path = AppPaths.GetSettingsPath();
+        if (!File.Exists(path)) return null;
+        var bytes = File.ReadAllBytes(path);
+        var settings = JsonSerializer.Deserialize(bytes, PersistenceJsonContext.Default.ViewerSettings);
+        return settings?.Window;
     }
 
     private static void ForceForeground(Window window)

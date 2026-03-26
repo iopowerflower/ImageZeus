@@ -11,6 +11,17 @@ public sealed class ViewerSettings
     public CapsSettings Caps { get; set; } = new();
 
     public int JpegFallbackQuality { get; set; } = 92;
+
+    public WindowGeometry? Window { get; set; }
+}
+
+public sealed class WindowGeometry
+{
+    public int X { get; set; }
+    public int Y { get; set; }
+    public int Width { get; set; } = 1200;
+    public int Height { get; set; } = 800;
+    public bool IsMaximized { get; set; }
 }
 
 public sealed class CapsSettings

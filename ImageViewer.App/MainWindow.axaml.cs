@@ -76,6 +76,13 @@ public partial class MainWindow : Window
         CapsFixedH.LostFocus += (_, _) => SaveCapsSettings();
         CapsResizeValue.LostFocus += (_, _) => SaveCapsSettings();
 
+        PositionChanged += (_, _) => PersistWindowGeometry();
+        this.PropertyChanged += (_, args) =>
+        {
+            if (args.Property == WindowStateProperty || args.Property == BoundsProperty)
+                PersistWindowGeometry();
+        };
+
         _uiReady = true;
     }
 
@@ -819,6 +826,32 @@ public partial class MainWindow : Window
         caps.CopyToClipboard = CapsClipboardCheckbox.IsChecked == true;
 
         ViewModel.PersistCapsSettings();
+    }
+
+    private void PersistWindowGeometry()
+    {
+        if (!_uiReady || ViewModel is null || _isFullscreen) return;
+
+        var geo = ViewModel.Settings.Window ??= new WindowGeometry();
+        geo.IsMaximized = WindowState == WindowState.Maximized;
+
+        if (WindowState == WindowState.Normal)
+        {
+            geo.X = Position.X;
+            geo.Y = Position.Y;
+            var w = (int)Bounds.Width;
+            var h = (int)Bounds.Height;
+            if (w > 0 && h > 0)
+            {
+                geo.Width = w;
+                geo.Height = h;
+            }
+        }
+
+        if (Application.Current is App app)
+            app.LastWindowGeometry = geo;
+
+        ViewModel.PersistSettings();
     }
 
     private async void OnCapsBrowseClick(object? sender, RoutedEventArgs e)

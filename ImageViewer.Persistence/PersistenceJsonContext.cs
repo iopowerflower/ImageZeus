@@ -4,8 +4,9 @@ using ImageViewer.Core.Models;
 namespace ImageViewer.Persistence;
 
 [JsonSerializable(typeof(ViewerSettings))]
+[JsonSerializable(typeof(WindowGeometry))]
 [JsonSerializable(typeof(Dictionary<string, uint>))]
 [JsonSourceGenerationOptions(
     PropertyNamingPolicy = JsonKnownNamingPolicy.CamelCase,
     WriteIndented = true)]
-internal partial class PersistenceJsonContext : JsonSerializerContext;
+public partial class PersistenceJsonContext : JsonSerializerContext;

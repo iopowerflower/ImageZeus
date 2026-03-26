@@ -472,6 +472,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         ShowExif = !ShowExif;
     }
 
+    public ViewerSettings Settings => _settings;
+
     public CapsSettings CapsSettings => _settings.Caps;
 
     public void PersistCapsSettings()
@@ -1154,7 +1156,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _currentLease = lease;
     }
 
-    private void PersistSettings()
+    public void PersistSettings()
     {
         _settingsWriter.ScheduleSave(_settings);
     }
