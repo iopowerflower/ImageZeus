@@ -251,7 +251,11 @@ public partial class MainWindow : Window
         var viewW = ViewerArea.Bounds.Width;
         var viewH = ViewerArea.Bounds.Height;
         var img = ViewModel.CurrentImage;
-        if (img is null || viewW <= 0 || viewH <= 0) return;
+        if (img is null || viewW <= 0 || viewH <= 0)
+        {
+            CheckerboardBg.IsVisible = false;
+            return;
+        }
 
         var imgW = img.PixelSize.Width * ViewModel.Zoom;
         var imgH = img.PixelSize.Height * ViewModel.Zoom;
@@ -264,6 +268,17 @@ public partial class MainWindow : Window
 
         MainImage.RenderTransform = new ScaleTransform(ViewModel.Zoom, ViewModel.Zoom);
         MainImage.RenderTransformOrigin = new RelativePoint(0, 0, RelativeUnit.Absolute);
+
+        SyncCheckerboard(left, top, imgW, imgH);
+    }
+
+    private void SyncCheckerboard(double left, double top, double imgW, double imgH)
+    {
+        Canvas.SetLeft(CheckerboardBg, left);
+        Canvas.SetTop(CheckerboardBg, top);
+        CheckerboardBg.Width = imgW;
+        CheckerboardBg.Height = imgH;
+        CheckerboardBg.IsVisible = ViewModel?.CurrentImage is not null;
     }
 
     private void RefitImage()

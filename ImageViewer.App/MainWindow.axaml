@@ -132,6 +132,31 @@
               PointerPressed="OnViewerPointerPressed"
               PointerReleased="OnViewerPointerReleased">
         <Canvas Name="ImageCanvas" HorizontalAlignment="Stretch" VerticalAlignment="Stretch">
+          <Border Name="CheckerboardBg" IsVisible="False">
+            <Border.Background>
+              <DrawingBrush TileMode="Tile"
+                            DestinationRect="0,0,16,16"
+                            SourceRect="0,0,16,16">
+                <DrawingBrush.Drawing>
+                  <DrawingGroup>
+                    <GeometryDrawing Brush="#1A1F26">
+                      <GeometryDrawing.Geometry>
+                        <RectangleGeometry Rect="0,0,16,16" />
+                      </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                    <GeometryDrawing Brush="#252B34">
+                      <GeometryDrawing.Geometry>
+                        <GeometryGroup>
+                          <RectangleGeometry Rect="0,0,8,8" />
+                          <RectangleGeometry Rect="8,8,8,8" />
+                        </GeometryGroup>
+                      </GeometryDrawing.Geometry>
+                    </GeometryDrawing>
+                  </DrawingGroup>
+                </DrawingBrush.Drawing>
+              </DrawingBrush>
+            </Border.Background>
+          </Border>
           <Image Name="MainImage"
                  Source="{Binding CurrentImage}"
                  Stretch="None" />
