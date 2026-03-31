@@ -242,7 +242,7 @@
                   HorizontalAlignment="Stretch"
                   VerticalAlignment="Bottom"
                   MinWidth="280"
-                  Padding="14,9"
+                  Padding="14,8"
                   CornerRadius="10"
                   Background="#BF161B22"
                   BorderBrush="#28333D"

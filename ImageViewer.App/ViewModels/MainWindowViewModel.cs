@@ -51,6 +51,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private DispatcherTimer? _dirRefreshTimer;
     private string? _currentFolder;
+    private bool _settingsLoaded;
 
     public MainWindowViewModel(AppServices services)
     {
@@ -241,6 +242,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             var settingsTask = _services.SettingsStore.LoadAsync(CancellationToken.None);
 
             _settings = await settingsTask;
+            _settingsLoaded = true;
             IsSidePanelOpen = _settings.IsSidePanelOpen;
 
             if (string.IsNullOrWhiteSpace(firstFile))
@@ -1158,6 +1160,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public void PersistSettings()
     {
+        if (!_settingsLoaded) return;
         _settingsWriter.ScheduleSave(_settings);
     }
 

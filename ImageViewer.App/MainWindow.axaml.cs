@@ -27,6 +27,7 @@ public partial class MainWindow : Window
     private bool _isPanning;
     private Point _lastPanPoint;
     private bool _uiReady;
+    private bool _loadingCaps;
 
     private WindowState _preFullscreenState;
     private PixelPoint _preFullscreenPosition;
@@ -65,6 +66,7 @@ public partial class MainWindow : Window
         MiniPanelHitZone.AddHandler(PointerReleasedEvent, OnMiniPanelPointerReleased, handledEventsToo: true);
         ScrubBarHitZone.AddHandler(PointerPressedEvent, OnScrubBarPointerPressed, handledEventsToo: true);
         ScrubBarHitZone.AddHandler(PointerReleasedEvent, OnScrubBarPointerReleased, handledEventsToo: true);
+        AddHandler(PointerPressedEvent, OnWindowPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
         CapsFormatCombo.SelectionChanged += (_, _) => SaveCapsSettings();
         CapsClipboardCheckbox.IsCheckedChanged += (_, _) => SaveCapsSettings();
@@ -437,29 +439,41 @@ public partial class MainWindow : Window
         PositionImage();
     }
 
-    private void OnViewerPointerPressed(object? sender, PointerPressedEventArgs e)
+    private void OnWindowPointerPressed(object? sender, PointerPressedEventArgs e)
     {
-        var props = e.GetCurrentPoint(ViewerArea).Properties;
+        var props = e.GetCurrentPoint(this).Properties;
 
         if (props.IsXButton1Pressed)
         {
+            e.Handled = true;
             _ = RunLoggedAsync(async () =>
             {
                 var msg = await (ViewModel?.NavigateAsync(-1) ?? Task.FromResult<string?>(null));
                 RefitImage();
                 if (msg is not null) ShowToast(msg);
             }, "XButton1 nav");
-            return;
         }
-
-        if (props.IsXButton2Pressed)
+        else if (props.IsXButton2Pressed)
         {
+            e.Handled = true;
             _ = RunLoggedAsync(async () =>
             {
                 var msg = await (ViewModel?.NavigateAsync(1) ?? Task.FromResult<string?>(null));
                 RefitImage();
                 if (msg is not null) ShowToast(msg);
             }, "XButton2 nav");
+        }
+    }
+
+    private void OnViewerPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var props = e.GetCurrentPoint(ViewerArea).Properties;
+
+        if (props.IsMiddleButtonPressed)
+        {
+            _isPanning = true;
+            _lastPanPoint = e.GetPosition(ViewerArea);
+            e.Pointer.Capture(ViewerArea);
             return;
         }
 
@@ -774,6 +788,7 @@ public partial class MainWindow : Window
     private void LoadCapsSettings()
     {
         if (ViewModel is null) return;
+        _loadingCaps = true;
         var caps = ViewModel.CapsSettings;
 
         _capsActive = caps.CapsEnabled;
@@ -806,11 +821,12 @@ public partial class MainWindow : Window
         CapsAutoCapCheckbox.IsChecked = caps.AutoCap;
 
         SyncCapsPanelVisibility();
+        _loadingCaps = false;
     }
 
     private void SaveCapsSettings()
     {
-        if (!_uiReady || ViewModel is null) return;
+        if (!_uiReady || _loadingCaps || ViewModel is null) return;
         var caps = ViewModel.CapsSettings;
 
         caps.CapsEnabled = CapsActiveCheckbox.IsChecked == true;
@@ -1031,8 +1047,6 @@ public partial class MainWindow : Window
 
     private void UpdateCapsRect()
     {
-        var x = Math.Min(_capsStart.X, _capsEnd.X);
-        var y = Math.Min(_capsStart.Y, _capsEnd.Y);
         var w = Math.Abs(_capsEnd.X - _capsStart.X);
         var h = Math.Abs(_capsEnd.Y - _capsStart.Y);
 
@@ -1055,6 +1069,9 @@ public partial class MainWindow : Window
                 h = fh;
             }
         }
+
+        var x = _capsEnd.X >= _capsStart.X ? _capsStart.X : _capsStart.X - w;
+        var y = _capsEnd.Y >= _capsStart.Y ? _capsStart.Y : _capsStart.Y - h;
 
         Canvas.SetLeft(CapsBorder, x);
         Canvas.SetTop(CapsBorder, y);
