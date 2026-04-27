@@ -183,13 +183,21 @@
 
   <!-- Delete button -->
   <Style Selector="Button.deleteBtn">
-    <Setter Property="Padding" Value="12,8" />
-    <Setter Property="CornerRadius" Value="6" />
-    <Setter Property="FontSize" Value="13" />
+    <Setter Property="Padding" Value="8,7" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="FontSize" Value="12" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Background" Value="#3D1A1A" />
     <Setter Property="Foreground" Value="#FF5050" />
     <Setter Property="BorderBrush" Value="#6A2A2A" />
+    <Setter Property="BorderThickness" Value="1,1,0,1" />
+  </Style>
+  <Style Selector="Button.deleteBtnLeft">
+    <Setter Property="CornerRadius" Value="6,0,0,6" />
+    <Setter Property="BorderThickness" Value="1,1,0,1" />
+  </Style>
+  <Style Selector="Button.deleteBtnRight">
+    <Setter Property="CornerRadius" Value="0,6,6,0" />
     <Setter Property="BorderThickness" Value="1" />
   </Style>
   <Style Selector="Button.deleteBtn:pointerover">

@@ -53,6 +53,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private string? _currentFolder;
     private bool _settingsLoaded;
 
+    internal System.Diagnostics.Stopwatch? OpenStopwatch { get; set; }
+
     public MainWindowViewModel(AppServices services)
     {
         _services = services;
@@ -285,6 +287,19 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             _ = Task.Run(() => BackfillMetadataAsync(fullFirst, ratings));
 
             StartDirectoryRefreshTimer();
+
+            if (OpenStopwatch is { } sw)
+            {
+                sw.Stop();
+                try
+                {
+                    var name = CurrentEntry is not null ? Path.GetFileName(CurrentEntry.FullPath) : "?";
+                    File.AppendAllText(AppPaths.GetPerfLogPath(),
+                        $"[{DateTime.Now:HH:mm:ss.fff}] OPEN {sw.ElapsedMilliseconds}ms {name}\n");
+                }
+                catch { /* best effort */ }
+                OpenStopwatch = null;
+            }
         }
         catch (Exception ex)
         {
@@ -766,7 +781,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }, "Print image");
     }
 
-    public async Task DeleteAsync()
+    public async Task DeleteAsync(int direction = 1)
     {
         var path = CurrentEntry?.FullPath;
         if (path is null) return;
@@ -792,7 +807,11 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                 return;
             }
 
-            _currentIndex = deletedIndex < _images.Count ? deletedIndex : _images.Count - 1;
+            if (direction < 0)
+                _currentIndex = deletedIndex > 0 ? deletedIndex - 1 : 0;
+            else
+                _currentIndex = deletedIndex < _images.Count ? deletedIndex : _images.Count - 1;
+
             RaiseNavigationProperties();
             await LoadCurrentAsync();
         }, "Delete image");

@@ -59,3 +59,8 @@ nunit-*.xml
 # Publish and installer output
 publish/
 installer_output/
+
+# Native launcher build artifacts
+launcher/*.obj
+launcher/*.res
+launcher/*.exe

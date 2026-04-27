@@ -40,7 +40,13 @@ public sealed class RefCountedImageCache
 
     public void Put(string key, DecodedImage image)
     {
+        PutAndAcquire(key, image)?.Dispose();
+    }
+
+    public ImageCacheLease? PutAndAcquire(string key, DecodedImage image)
+    {
         List<CacheEntry> toDispose = new();
+        ImageCacheLease? lease;
 
         lock (_gate)
         {
@@ -59,11 +65,15 @@ public sealed class RefCountedImageCache
             }
 
             var node = _lru.AddLast(key);
-            _entries[key] = new CacheEntry(image, node);
+            var entry = new CacheEntry(image, node);
+            entry.RefCount = 1;
+            _entries[key] = entry;
+            lease = new ImageCacheLease(this, entry);
             EvictUnsafe(toDispose);
         }
 
         DisposeOutsideLock(toDispose);
+        return lease;
     }
 
     public void Remove(string key)

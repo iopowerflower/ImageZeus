@@ -12,6 +12,7 @@ public sealed class ImageDecodePipeline
     private readonly DecodeLimits _limits;
     private readonly ICrashLogger _crashLogger;
     private readonly ConcurrentDictionary<string, Task> _inFlight = new(StringComparer.OrdinalIgnoreCase);
+    private readonly ConcurrentDictionary<string, ImageCacheLease> _decodedLeases = new(StringComparer.OrdinalIgnoreCase);
 
     public ImageDecodePipeline(
         IImageDecoder decoder,
@@ -30,6 +31,8 @@ public sealed class ImageDecodePipeline
         var key = Path.GetFullPath(fullPath);
         _cache.Remove(key);
         _inFlight.TryRemove(key, out _);
+        if (_decodedLeases.TryRemove(key, out var stale))
+            stale.Dispose();
     }
 
     public ImageCacheLease? TryAcquireCached(string fullPath)
@@ -69,6 +72,11 @@ public sealed class ImageDecodePipeline
                 _inFlight.TryRemove(key, out _);
         }
 
+        // The decode holds a lease that's safe from eviction. Transfer it to the caller.
+        if (_decodedLeases.TryRemove(key, out var held))
+            return held;
+
+        // Fallback: try cache directly (shouldn't normally be needed)
         if (_cache.TryAcquire(key, out var lease) && lease is not null)
             return lease;
 
@@ -80,7 +88,14 @@ public sealed class ImageDecodePipeline
         try
         {
             var decoded = await _decoder.DecodeAsync(key, _limits, CancellationToken.None);
-            _cache.Put(key, decoded);
+            var lease = _cache.PutAndAcquire(key, decoded);
+            if (lease is not null)
+            {
+                // Hold a lease to prevent eviction before the caller picks it up
+                var old = _decodedLeases.GetOrAdd(key, lease);
+                if (!ReferenceEquals(old, lease))
+                    lease.Dispose();
+            }
         }
         catch (Exception ex)
         {

@@ -9,6 +9,7 @@
 #define MyAppVersion "1.0.0"
 #define MyAppPublisher "ImageZeus"
 #define MyAppExeName "ImageZeus.exe"
+#define MyDaemonExeName "ImageZeusDaemon.exe"
 #define PublishDir "..\publish"
 #define IconFile "..\zeusicon.ico"
 
@@ -44,12 +45,13 @@ Source: "{#PublishDir}\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 Source: "{#IconFile}"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
+; Native launcher for shortcuts
 Name: "{group}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\zeusicon.ico"
 Name: "{group}\Uninstall {#MyAppName}"; Filename: "{uninstallexe}"
 Name: "{autodesktop}\{#MyAppName}"; Filename: "{app}\{#MyAppExeName}"; IconFilename: "{app}\zeusicon.ico"; Tasks: desktopicon
 
 [Registry]
-; ProgID
+; ProgID — native launcher handles open command
 Root: HKLM; Subkey: "SOFTWARE\Classes\ImageZeus.Image"; ValueType: string; ValueData: "Image File - ImageZeus"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\Classes\ImageZeus.Image\DefaultIcon"; ValueType: string; ValueData: "{app}\zeusicon.ico,0"; Flags: uninsdeletekey
 Root: HKLM; Subkey: "SOFTWARE\Classes\ImageZeus.Image\shell\open\command"; ValueType: string; ValueData: """{app}\{#MyAppExeName}"" ""%1"""; Flags: uninsdeletekey
@@ -70,8 +72,9 @@ Root: HKLM; Subkey: "SOFTWARE\ImageZeus\Capabilities\FileAssociations"; ValueTyp
 ; Master registered-applications list
 Root: HKLM; Subkey: "SOFTWARE\RegisteredApplications"; ValueType: string; ValueName: "ImageZeus"; ValueData: "SOFTWARE\ImageZeus\Capabilities"; Flags: uninsdeletevalue
 
-; Start at login (daemon mode)
-Root: HKCU; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "ImageZeus"; ValueData: """{app}\{#MyAppExeName}"" --daemon"; Flags: uninsdeletevalue; Tasks: startwithwindows
+; Start at login — daemon exe with --daemon flag
+Root: HKCU; Subkey: "SOFTWARE\Microsoft\Windows\CurrentVersion\Run"; ValueType: string; ValueName: "ImageZeus"; ValueData: """{app}\{#MyDaemonExeName}"" --daemon"; Flags: uninsdeletevalue; Tasks: startwithwindows
 
 [Run]
-Filename: "{app}\{#MyAppExeName}"; Parameters: "--daemon"; Description: "Start ImageZeus background service"; Flags: nowait postinstall skipifsilent
+; Post-install: start daemon
+Filename: "{app}\{#MyDaemonExeName}"; Parameters: "--daemon"; Description: "Start ImageZeus background service"; Flags: nowait postinstall skipifsilent

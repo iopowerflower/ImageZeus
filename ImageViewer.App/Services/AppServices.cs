@@ -19,7 +19,7 @@ public sealed class AppServices
         ShellService = new WindowsShellService();
         RatingService = new JsonRatingService(AppPaths.GetRatingsPath());
 
-        var cache = new RefCountedImageCache(maxItems: 12);
+        var cache = new RefCountedImageCache(maxItems: 20);
         var decoder = new SkiaSharpDecoder();
         DecodePipeline = new ImageDecodePipeline(decoder, cache, new DecodeLimits(), CrashLogger);
 

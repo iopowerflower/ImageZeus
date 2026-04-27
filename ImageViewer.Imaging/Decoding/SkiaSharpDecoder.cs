@@ -20,10 +20,11 @@ public sealed class SkiaSharpDecoder : IImageDecoder
         if (info.Length > limits.MaxFileSizeBytes)
             throw new InvalidDataException($"File exceeds max size limit ({limits.MaxFileSizeBytes} bytes).");
 
-        var fileBytes = File.ReadAllBytes(canonicalPath);
         cancellationToken.ThrowIfCancellationRequested();
 
-        using var codec = SKCodec.Create(new MemoryStream(fileBytes));
+        using var stream = File.OpenRead(canonicalPath);
+        using var skStream = new SKManagedStream(stream);
+        using var codec = SKCodec.Create(skStream);
         if (codec is null)
             throw new InvalidDataException($"SkiaSharp cannot decode '{canonicalPath}'.");
 

@@ -104,7 +104,7 @@ public partial class MainWindow : Window
                 LoadCapsSettings();
                 UpdateScrubRange();
             }, "Main window opened");
-        }, DispatcherPriority.Background);
+        }, DispatcherPriority.Normal);
 
         FlashMiniPanel();
     }
@@ -176,7 +176,7 @@ public partial class MainWindow : Window
                     await CopyRenderedImageToClipboardAsync();
                     break;
                 case Key.C when e.KeyModifiers == KeyModifiers.None:
-                    if (_capsActive && CapsBorder.IsVisible)
+                    if (_capsActive)
                         await PerformCapsCapture();
                     break;
             }
@@ -914,106 +914,145 @@ public partial class MainWindow : Window
         await PerformCapsCapture();
     }
 
-    private async void OnDeleteClick(object? sender, RoutedEventArgs e)
+    private async void OnDeletePrevClick(object? sender, RoutedEventArgs e)
     {
         await RunLoggedAsync(async () =>
         {
-            await (ViewModel?.DeleteAsync() ?? Task.CompletedTask);
+            await (ViewModel?.DeleteAsync(-1) ?? Task.CompletedTask);
             RefitImage();
-        }, "Sidebar delete");
+        }, "Delete go prev");
+    }
+
+    private async void OnDeleteNextClick(object? sender, RoutedEventArgs e)
+    {
+        await RunLoggedAsync(async () =>
+        {
+            await (ViewModel?.DeleteAsync(1) ?? Task.CompletedTask);
+            RefitImage();
+        }, "Delete go next");
     }
 
     private async Task PerformCapsCapture()
     {
         await RunLoggedAsync(async () =>
         {
-            if (ViewModel?.CurrentImage is null || !CapsBorder.IsVisible) return;
+            if (ViewModel?.CurrentImage is null) return;
 
-            var left = Canvas.GetLeft(CapsBorder);
-            var top = Canvas.GetTop(CapsBorder);
-            var w = CapsBorder.Width;
-            var h = CapsBorder.Height;
-
-            if (double.IsNaN(left) || double.IsNaN(top) || w <= 0 || h <= 0) return;
-
-            var pixelW = (int)Math.Round(w);
-            var pixelH = (int)Math.Round(h);
-
-            var result = ApplyCapsConstraints(pixelW, pixelH);
-
-            var renderTarget = new RenderTargetBitmap(
-                new Avalonia.PixelSize((int)ViewerArea.Bounds.Width, (int)ViewerArea.Bounds.Height));
-            renderTarget.Render(ViewerArea);
-
-            using var ms = new MemoryStream();
-            renderTarget.Save(ms);
-            ms.Position = 0;
-            using var skBmp = SKBitmap.Decode(ms);
-
-            if (skBmp is null) return;
-
-            var srcRect = new SKRectI(
-                Math.Max(0, (int)left),
-                Math.Max(0, (int)top),
-                Math.Min(skBmp.Width, (int)(left + w)),
-                Math.Min(skBmp.Height, (int)(top + h)));
-
-            using var cropped = new SKBitmap(srcRect.Width, srcRect.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-            skBmp.ExtractSubset(cropped, srcRect);
-
+            bool hasSelection = CapsBorder.IsVisible;
+            SKBitmap? sourceBitmap = null;
             SKBitmap? resizedBitmap = null;
-            var finalBitmap = cropped;
-            if (result.Width != cropped.Width || result.Height != cropped.Height)
+            RenderTargetBitmap? renderTarget = null;
+
+            try
             {
-                resizedBitmap = cropped.Resize(new SKImageInfo(result.Width, result.Height, SKColorType.Bgra8888, SKAlphaType.Premul), SKFilterQuality.High);
-                if (resizedBitmap is not null)
-                    finalBitmap = resizedBitmap;
-            }
-
-            var format = GetCapsOutputFormat();
-            var ext = format switch
-            {
-                CapsOutputFormat.Png => "png",
-                CapsOutputFormat.Jpeg => "jpg",
-                CapsOutputFormat.WebP => "webp",
-                _ => Path.GetExtension(ViewModel.CurrentEntry?.FullPath ?? ".png").TrimStart('.'),
-            };
-
-            if (string.IsNullOrWhiteSpace(ext)) ext = "png";
-
-            var fileName = ViewModel.BuildCapsFileName(ViewModel.CurrentEntry?.Name ?? "capture", ext, _capsSequence++);
-
-            if (CapsSaveCheckbox.IsChecked == true)
-            {
-                var saveDir = string.IsNullOrWhiteSpace(CapsSaveDir.Text)
-                    ? Path.GetDirectoryName(ViewModel.CurrentEntry?.FullPath) ?? Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
-                    : CapsSaveDir.Text;
-
-                Directory.CreateDirectory(saveDir);
-                var fullPath = Path.Combine(saveDir, fileName);
-
-                var skFormat = format switch
+                if (hasSelection)
                 {
-                    CapsOutputFormat.Jpeg => SKEncodedImageFormat.Jpeg,
-                    CapsOutputFormat.WebP => SKEncodedImageFormat.Webp,
-                    _ => SKEncodedImageFormat.Png,
+                    var left = Canvas.GetLeft(CapsBorder);
+                    var top = Canvas.GetTop(CapsBorder);
+                    var w = CapsBorder.Width;
+                    var h = CapsBorder.Height;
+
+                    if (double.IsNaN(left) || double.IsNaN(top) || w <= 0 || h <= 0) return;
+
+                    var pixelW = (int)Math.Round(w);
+                    var pixelH = (int)Math.Round(h);
+
+                    var result = ApplyCapsConstraints(pixelW, pixelH);
+
+                    renderTarget = new RenderTargetBitmap(
+                        new Avalonia.PixelSize((int)ViewerArea.Bounds.Width, (int)ViewerArea.Bounds.Height));
+                    renderTarget.Render(ViewerArea);
+
+                    using var ms = new MemoryStream();
+                    renderTarget.Save(ms);
+                    ms.Position = 0;
+                    using var skBmp = SKBitmap.Decode(ms);
+
+                    if (skBmp is null) return;
+
+                    var srcRect = new SKRectI(
+                        Math.Max(0, (int)left),
+                        Math.Max(0, (int)top),
+                        Math.Min(skBmp.Width, (int)(left + w)),
+                        Math.Min(skBmp.Height, (int)(top + h)));
+
+                    sourceBitmap = new SKBitmap(srcRect.Width, srcRect.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                    skBmp.ExtractSubset(sourceBitmap, srcRect);
+
+                    if (result.Width != sourceBitmap.Width || result.Height != sourceBitmap.Height)
+                    {
+                        resizedBitmap = sourceBitmap.Resize(new SKImageInfo(result.Width, result.Height, SKColorType.Bgra8888, SKAlphaType.Premul), SKFilterQuality.High);
+                    }
+                }
+                else
+                {
+                    var data = ViewModel.GetCurrentPixelData();
+                    if (data is null) return;
+
+                    var (pixels, imgW, imgH, stride) = data.Value;
+                    sourceBitmap = new SKBitmap(new SKImageInfo(imgW, imgH, SKColorType.Bgra8888, SKAlphaType.Premul));
+                    var dstPtr = sourceBitmap.GetPixels();
+                    var dstStride = sourceBitmap.RowBytes;
+                    for (int y = 0; y < imgH; y++)
+                        Marshal.Copy(pixels, y * stride, dstPtr + y * dstStride, Math.Min(stride, dstStride));
+
+                    var result = ApplyCapsConstraints(imgW, imgH);
+                    if (result.Width != imgW || result.Height != imgH)
+                    {
+                        resizedBitmap = sourceBitmap.Resize(new SKImageInfo(result.Width, result.Height, SKColorType.Bgra8888, SKAlphaType.Premul), SKFilterQuality.High);
+                    }
+                }
+
+                var finalBitmap = resizedBitmap ?? sourceBitmap;
+
+                var format = GetCapsOutputFormat();
+                var ext = format switch
+                {
+                    CapsOutputFormat.Png => "png",
+                    CapsOutputFormat.Jpeg => "jpg",
+                    CapsOutputFormat.WebP => "webp",
+                    _ => Path.GetExtension(ViewModel.CurrentEntry?.FullPath ?? ".png").TrimStart('.'),
                 };
 
-                using var encoded = finalBitmap.Encode(skFormat, 92);
-                await using var fileStream = File.Create(fullPath);
-                encoded.SaveTo(fileStream);
-            }
+                if (string.IsNullOrWhiteSpace(ext)) ext = "png";
 
-            if (CapsClipboardCheckbox.IsChecked == true)
+                var fileName = ViewModel.BuildCapsFileName(ViewModel.CurrentEntry?.Name ?? "capture", ext, _capsSequence++);
+
+                if (CapsSaveCheckbox.IsChecked == true)
+                {
+                    var saveDir = string.IsNullOrWhiteSpace(CapsSaveDir.Text)
+                        ? Path.GetDirectoryName(ViewModel.CurrentEntry?.FullPath) ?? Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
+                        : CapsSaveDir.Text;
+
+                    Directory.CreateDirectory(saveDir);
+                    var fullPath = Path.Combine(saveDir, fileName);
+
+                    var skFormat = format switch
+                    {
+                        CapsOutputFormat.Jpeg => SKEncodedImageFormat.Jpeg,
+                        CapsOutputFormat.WebP => SKEncodedImageFormat.Webp,
+                        _ => SKEncodedImageFormat.Png,
+                    };
+
+                    using var encoded = finalBitmap.Encode(skFormat, 92);
+                    await using var fileStream = File.Create(fullPath);
+                    encoded.SaveTo(fileStream);
+                }
+
+                if (CapsClipboardCheckbox.IsChecked == true)
+                {
+                    CopyBitmapToNativeClipboard(finalBitmap);
+                }
+
+                CapsBorder.IsVisible = false;
+                CapsOverlayCanvas.IsVisible = false;
+            }
+            finally
             {
-                CopyBitmapToNativeClipboard(finalBitmap);
+                resizedBitmap?.Dispose();
+                sourceBitmap?.Dispose();
+                renderTarget?.Dispose();
             }
-
-            resizedBitmap?.Dispose();
-            renderTarget.Dispose();
-
-            CapsBorder.IsVisible = false;
-            CapsOverlayCanvas.IsVisible = false;
         }, "Caps capture");
     }
 

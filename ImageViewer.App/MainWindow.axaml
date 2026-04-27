@@ -116,8 +116,14 @@
 
           <!-- Delete -->
           <Border Height="1" Background="#21262D" Margin="0,8" />
-          <Button Classes="deleteBtn" Content="Delete  [Del]" Click="OnDeleteClick"
-                  HorizontalAlignment="Stretch" />
+          <Grid ColumnDefinitions="*,*" HorizontalAlignment="Stretch">
+            <Button Grid.Column="0" Classes="deleteBtn deleteBtnLeft"
+                    Click="OnDeletePrevClick" HorizontalContentAlignment="Right"
+                    Content="◀ Del" />
+            <Button Grid.Column="1" Classes="deleteBtn deleteBtnRight"
+                    Click="OnDeleteNextClick" HorizontalContentAlignment="Left"
+                    Content="Del ▶" />
+          </Grid>
         </StackPanel>
       </ScrollViewer>
     </Border>

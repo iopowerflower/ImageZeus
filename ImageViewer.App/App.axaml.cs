@@ -19,12 +19,18 @@ public partial class App : Application
     private const string PipeName = "ImageZeus_Pipe";
 
     private CancellationTokenSource? _pipeCts;
+    private Timer? _keepAliveTimer;
     private readonly List<(MainWindow Window, MainWindowViewModel ViewModel)> _viewers = new();
 
     public required AppServices Services { get; init; }
     public bool IsDaemonStart { get; init; }
 
     internal WindowGeometry? LastWindowGeometry { get; set; }
+
+    [DllImport("kernel32.dll")]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    private static extern bool SetProcessWorkingSetSizeEx(
+        IntPtr hProcess, nint dwMinimumWorkingSetSize, nint dwMaximumWorkingSetSize, uint flags);
 
     [DllImport("user32.dll")]
     [return: MarshalAs(UnmanagedType.Bool)]
@@ -94,6 +100,7 @@ public partial class App : Application
             }
 
             StartPipeServer();
+            StartKeepAlive();
         }
 
         base.OnFrameworkInitializationCompleted();
@@ -104,7 +111,18 @@ public partial class App : Application
         var args = string.IsNullOrEmpty(filePath) ? Array.Empty<string>() : new[] { filePath };
         var childServices = Services.CreateChild(args);
 
+        // Start decoding immediately while window is being constructed
+        if (!string.IsNullOrEmpty(filePath) && File.Exists(filePath))
+        {
+            _ = Task.Run(async () =>
+            {
+                try { await Services.DecodePipeline.LoadAsync(filePath, CancellationToken.None); }
+                catch { /* will be retried in InitializeAsync */ }
+            });
+        }
+
         var viewModel = new MainWindowViewModel(childServices);
+        viewModel.OpenStopwatch = System.Diagnostics.Stopwatch.StartNew();
         var window = new MainWindow { DataContext = viewModel };
 
         var geo = LastWindowGeometry;
@@ -197,6 +215,8 @@ public partial class App : Application
     private void ShutdownApp()
     {
         _pipeCts?.Cancel();
+        _keepAliveTimer?.Dispose();
+        _keepAliveTimer = null;
 
         foreach (var (window, viewModel) in _viewers.ToArray())
         {
@@ -213,6 +233,23 @@ public partial class App : Application
             await Task.Delay(2000);
             Environment.Exit(0);
         });
+    }
+
+    private void StartKeepAlive()
+    {
+        _keepAliveTimer = new Timer(_ =>
+        {
+            try
+            {
+                var proc = System.Diagnostics.Process.GetCurrentProcess();
+                SetProcessWorkingSetSizeEx(proc.Handle, (nint)20_000_000, (nint)80_000_000, 0);
+                GC.Collect(0, GCCollectionMode.Optimized, false);
+
+                // Poke the Avalonia UI thread dispatcher to prevent it from going dormant
+                Dispatcher.UIThread.Post(() => { }, DispatcherPriority.Background);
+            }
+            catch { /* best effort */ }
+        }, null, TimeSpan.FromSeconds(15), TimeSpan.FromSeconds(15));
     }
 
     private void StartPipeServer()
@@ -242,10 +279,8 @@ public partial class App : Application
                     await server.DisposeAsync();
                     server = null;
 
-                    if (!string.IsNullOrWhiteSpace(path))
-                    {
-                        Dispatcher.UIThread.Post(() => OpenNewViewer(path));
-                    }
+                    var openPath = string.IsNullOrWhiteSpace(path) ? null : path;
+                    await Dispatcher.UIThread.InvokeAsync(() => OpenNewViewer(openPath));
                 }
                 catch (OperationCanceledException)
                 {
