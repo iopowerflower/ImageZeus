@@ -24,21 +24,14 @@ jobs:
       - name: Publish
         shell: cmd
         run: |
-          dotnet publish ImageViewer.App\ImageViewer.App.csproj ^
-            -c Release -r win-x64 --self-contained true ^
-            -o publish ^
-            -p:PublishSingleFile=true ^
-            -p:IncludeNativeLibrariesForSelfExtract=true ^
-            -p:PublishTrimmed=true ^
-            -p:TrimMode=partial
-          copy /y zeusicon.ico publish\zeusicon.ico
-          copy /y zeusicon.png publish\zeusicon.png
+          call publish.bat
 
       - name: Build installer
-        shell: cmd
+        shell: pwsh
         run: |
           choco install innosetup --no-progress -y
-          iscc installer\ImageZeus.iss /DMyAppVersion=${{ github.ref_name }}
+          $version = "${{ github.ref_name }}" -replace '^v', ''
+          iscc installer\ImageZeus.iss "/DMyAppVersion=$version"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2

@@ -109,6 +109,8 @@
           <!-- Copy to clipboard -->
           <CheckBox Name="CapsClipboardCheckbox" Content="Copy to Clipboard" />
 
+          <CheckBox Name="CapsOriginalPixelsCheckbox" Content="Original pixels" />
+
           <CheckBox Name="CapsAutoCapCheckbox" Content="Auto Cap" />
 
           <Button Classes="captureBtn" Content="Capture  [C]" Click="OnCapsCapture"

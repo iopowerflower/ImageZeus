@@ -38,6 +38,8 @@ public sealed class CapsSettings
 
     public bool CopyToClipboard { get; set; } = true;
 
+    public bool OriginalPixels { get; set; }
+
     public bool AspectRatioEnabled { get; set; }
 
     public int AspectRatioX { get; set; } = 16;

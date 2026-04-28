@@ -70,6 +70,7 @@ public partial class MainWindow : Window
 
         CapsFormatCombo.SelectionChanged += (_, _) => SaveCapsSettings();
         CapsClipboardCheckbox.IsCheckedChanged += (_, _) => SaveCapsSettings();
+        CapsOriginalPixelsCheckbox.IsCheckedChanged += (_, _) => SaveCapsSettings();
         CapsAutoCapCheckbox.IsCheckedChanged += (_, _) => SaveCapsSettings();
 
         CapsAspectX.LostFocus += (_, _) => SaveCapsSettings();
@@ -818,6 +819,7 @@ public partial class MainWindow : Window
         CapsSaveDir.Text = caps.SaveCapsDirectory ?? string.Empty;
 
         CapsClipboardCheckbox.IsChecked = caps.CopyToClipboard;
+        CapsOriginalPixelsCheckbox.IsChecked = caps.OriginalPixels;
         CapsAutoCapCheckbox.IsChecked = caps.AutoCap;
 
         SyncCapsPanelVisibility();
@@ -855,6 +857,7 @@ public partial class MainWindow : Window
         caps.SaveCapsDirectory = string.IsNullOrWhiteSpace(CapsSaveDir.Text) ? null : CapsSaveDir.Text;
 
         caps.CopyToClipboard = CapsClipboardCheckbox.IsChecked == true;
+        caps.OriginalPixels = CapsOriginalPixelsCheckbox.IsChecked == true;
 
         ViewModel.PersistCapsSettings();
     }
@@ -954,30 +957,37 @@ public partial class MainWindow : Window
 
                     if (double.IsNaN(left) || double.IsNaN(top) || w <= 0 || h <= 0) return;
 
-                    var pixelW = (int)Math.Round(w);
-                    var pixelH = (int)Math.Round(h);
+                    if (CapsOriginalPixelsCheckbox.IsChecked == true)
+                    {
+                        sourceBitmap = CreateOriginalPixelsCapsBitmap(left, top, w, h);
+                        if (sourceBitmap is null) return;
+                    }
+                    else
+                    {
+                        renderTarget = new RenderTargetBitmap(
+                            new Avalonia.PixelSize((int)ViewerArea.Bounds.Width, (int)ViewerArea.Bounds.Height));
+                        renderTarget.Render(ViewerArea);
 
-                    var result = ApplyCapsConstraints(pixelW, pixelH);
+                        using var ms = new MemoryStream();
+                        renderTarget.Save(ms);
+                        ms.Position = 0;
+                        using var skBmp = SKBitmap.Decode(ms);
 
-                    renderTarget = new RenderTargetBitmap(
-                        new Avalonia.PixelSize((int)ViewerArea.Bounds.Width, (int)ViewerArea.Bounds.Height));
-                    renderTarget.Render(ViewerArea);
+                        if (skBmp is null) return;
 
-                    using var ms = new MemoryStream();
-                    renderTarget.Save(ms);
-                    ms.Position = 0;
-                    using var skBmp = SKBitmap.Decode(ms);
+                        var srcRect = new SKRectI(
+                            Math.Max(0, (int)left),
+                            Math.Max(0, (int)top),
+                            Math.Min(skBmp.Width, (int)(left + w)),
+                            Math.Min(skBmp.Height, (int)(top + h)));
 
-                    if (skBmp is null) return;
+                        if (srcRect.Width <= 0 || srcRect.Height <= 0) return;
 
-                    var srcRect = new SKRectI(
-                        Math.Max(0, (int)left),
-                        Math.Max(0, (int)top),
-                        Math.Min(skBmp.Width, (int)(left + w)),
-                        Math.Min(skBmp.Height, (int)(top + h)));
+                        sourceBitmap = new SKBitmap(srcRect.Width, srcRect.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+                        skBmp.ExtractSubset(sourceBitmap, srcRect);
+                    }
 
-                    sourceBitmap = new SKBitmap(srcRect.Width, srcRect.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
-                    skBmp.ExtractSubset(sourceBitmap, srcRect);
+                    var result = ApplyCapsConstraints(sourceBitmap.Width, sourceBitmap.Height);
 
                     if (result.Width != sourceBitmap.Width || result.Height != sourceBitmap.Height)
                     {
@@ -1054,6 +1064,49 @@ public partial class MainWindow : Window
                 renderTarget?.Dispose();
             }
         }, "Caps capture");
+    }
+
+    private SKBitmap? CreateOriginalPixelsCapsBitmap(double selectionLeft, double selectionTop, double selectionWidth, double selectionHeight)
+    {
+        if (ViewModel is null || ViewModel.CurrentImage is null || ViewModel.Zoom <= 0)
+            return null;
+
+        var imageLeft = Canvas.GetLeft(MainImage);
+        var imageTop = Canvas.GetTop(MainImage);
+        if (double.IsNaN(imageLeft) || double.IsNaN(imageTop))
+            return null;
+
+        var data = ViewModel.GetCurrentPixelData();
+        if (data is null)
+            return null;
+
+        var (pixels, imgW, imgH, stride) = data.Value;
+        var sourceLeft = (selectionLeft - imageLeft) / ViewModel.Zoom;
+        var sourceTop = (selectionTop - imageTop) / ViewModel.Zoom;
+        var sourceRight = (selectionLeft + selectionWidth - imageLeft) / ViewModel.Zoom;
+        var sourceBottom = (selectionTop + selectionHeight - imageTop) / ViewModel.Zoom;
+
+        var srcRect = new SKRectI(
+            Math.Clamp((int)Math.Floor(sourceLeft), 0, imgW),
+            Math.Clamp((int)Math.Floor(sourceTop), 0, imgH),
+            Math.Clamp((int)Math.Ceiling(sourceRight), 0, imgW),
+            Math.Clamp((int)Math.Ceiling(sourceBottom), 0, imgH));
+
+        if (srcRect.Width <= 0 || srcRect.Height <= 0)
+            return null;
+
+        var bitmap = new SKBitmap(new SKImageInfo(srcRect.Width, srcRect.Height, SKColorType.Bgra8888, SKAlphaType.Premul));
+        var dstPtr = bitmap.GetPixels();
+        var dstStride = bitmap.RowBytes;
+        var bytesPerRow = srcRect.Width * 4;
+
+        for (var y = 0; y < srcRect.Height; y++)
+        {
+            var srcOffset = (srcRect.Top + y) * stride + srcRect.Left * 4;
+            Marshal.Copy(pixels, srcOffset, dstPtr + y * dstStride, bytesPerRow);
+        }
+
+        return bitmap;
     }
 
     private Core.Caps.PixelSize ApplyCapsConstraints(int sourceW, int sourceH)

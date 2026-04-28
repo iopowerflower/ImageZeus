@@ -6,7 +6,9 @@
 ;   2. Open this .iss in Inno Setup Compiler and click Build
 
 #define MyAppName "ImageZeus"
-#define MyAppVersion "1.0.0"
+#ifndef MyAppVersion
+#define MyAppVersion "1.0.7"
+#endif
 #define MyAppPublisher "ImageZeus"
 #define MyAppExeName "ImageZeus.exe"
 #define MyDaemonExeName "ImageZeusDaemon.exe"

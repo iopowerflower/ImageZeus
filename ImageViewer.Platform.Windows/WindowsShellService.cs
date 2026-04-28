@@ -9,6 +9,21 @@ public sealed class WindowsShellService : IShellService
     public void ShowInExplorer(string fullPath)
     {
         var canonical = Canonicalize(fullPath);
+
+        var pidl = ILCreateFromPathW(canonical);
+        if (pidl != IntPtr.Zero)
+        {
+            try
+            {
+                if (SHOpenFolderAndSelectItems(pidl, 0, IntPtr.Zero, 0) == 0)
+                    return;
+            }
+            finally
+            {
+                ILFree(pidl);
+            }
+        }
+
         Process.Start(new ProcessStartInfo
         {
             FileName = "explorer.exe",
@@ -98,6 +113,15 @@ public sealed class WindowsShellService : IShellService
     [DllImport("shell32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     private static extern bool ShellExecuteEx(ref SHELLEXECUTEINFO lpExecInfo);
+
+    [DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+    private static extern IntPtr ILCreateFromPathW(string pszPath);
+
+    [DllImport("shell32.dll")]
+    private static extern void ILFree(IntPtr pidl);
+
+    [DllImport("shell32.dll")]
+    private static extern int SHOpenFolderAndSelectItems(IntPtr pidlFolder, uint cidl, IntPtr apidl, uint dwFlags);
 
     private const int FO_DELETE = 0x0003;
     private const ushort FOF_ALLOWUNDO = 0x0040;
