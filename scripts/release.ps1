@@ -2,7 +2,6 @@ param(
     [Parameter(Position = 0)]
     [string]$Bump = "patch",
 
-    [switch]$SkipBuild,
     [switch]$NoPush,
     [switch]$DryRun
 )
@@ -11,36 +10,13 @@ Set-StrictMode -Version Latest
 $ErrorActionPreference = "Stop"
 
 $Root = Split-Path -Parent $PSScriptRoot
-$InstallerScript = Join-Path $Root "installer\ImageZeus.iss"
 
 function Run-Git {
-    param([Parameter(ValueFromRemainingArguments = $true)][string[]]$Args)
-    & git @Args
+    param([string[]]$GitArgs)
+    & git @GitArgs
     if ($LASTEXITCODE -ne 0) {
-        throw "git $($Args -join ' ') failed with exit code $LASTEXITCODE"
+        throw "git $($GitArgs -join ' ') failed with exit code $LASTEXITCODE"
     }
-}
-
-function Run-Command {
-    param(
-        [string]$FileName,
-        [string[]]$Arguments
-    )
-
-    & $FileName @Arguments
-    if ($LASTEXITCODE -ne 0) {
-        throw "$FileName $($Arguments -join ' ') failed with exit code $LASTEXITCODE"
-    }
-}
-
-function Get-CurrentVersion {
-    $text = [IO.File]::ReadAllText($InstallerScript)
-    $match = [regex]::Match($text, '#define\s+MyAppVersion\s+"(?<version>\d+\.\d+\.\d+(?:-[0-9A-Za-z.-]+)?)"')
-    if (-not $match.Success) {
-        throw "Could not find MyAppVersion in $InstallerScript"
-    }
-
-    return $match.Groups["version"].Value
 }
 
 function Resolve-NextVersion {
@@ -71,26 +47,9 @@ function Resolve-NextVersion {
     }
 }
 
-function Set-Version {
-    param([string]$Version)
-
-    $text = [IO.File]::ReadAllText($InstallerScript)
-    $updated = [regex]::Replace(
-        $text,
-        '#define\s+MyAppVersion\s+"[^"]+"',
-        "#define MyAppVersion `"$Version`"",
-        1)
-
-    if ($updated -eq $text) {
-        throw "Failed to update MyAppVersion in $InstallerScript"
-    }
-
-    [IO.File]::WriteAllText($InstallerScript, $updated)
-}
-
 Push-Location $Root
 try {
-    Run-Git rev-parse --is-inside-work-tree | Out-Null
+    Run-Git -GitArgs @("rev-parse", "--is-inside-work-tree") | Out-Null
 
     $dirty = git status --porcelain
     if ($dirty) {
@@ -102,9 +61,14 @@ This script only wants to commit the version bump, so it will not mix a release 
 "@
     }
 
-    Run-Git fetch --tags --quiet
+    Run-Git -GitArgs @("fetch", "--tags", "--quiet")
 
-    $currentVersion = Get-CurrentVersion
+    $latestTag = git tag --list "v[0-9]*" --sort=-v:refname | Select-Object -First 1
+    if (-not $latestTag) {
+        throw "Could not find any existing v* tags"
+    }
+
+    $currentVersion = $latestTag -replace '^v', ''
     $nextVersion = Resolve-NextVersion -CurrentVersion $currentVersion -RequestedBump $Bump
     $tag = "v$nextVersion"
 
@@ -118,36 +82,28 @@ This script only wants to commit the version bump, so it will not mix a release 
         throw "Tag '$tag' already exists on origin"
     }
 
-    Write-Host "Current version: $currentVersion"
+    Write-Host "Latest tag:      $latestTag"
     Write-Host "Next version:    $nextVersion"
     Write-Host "Tag:             $tag"
     Write-Host ""
 
     if ($DryRun) {
-        Write-Host "Dry run only. Would update installer version, commit, tag, and push."
+        Write-Host "Dry run only. Would tag the current commit and push branch/tag."
         return
     }
 
-    Set-Version $nextVersion
-
-    if (-not $SkipBuild) {
-        Run-Command dotnet @("build", "ImageZeus.sln", "-c", "Release")
-    }
-
-    Run-Git add "installer/ImageZeus.iss"
-    Run-Git commit -m "Release $tag"
-    Run-Git tag -a $tag -m "ImageZeus $tag"
+    Run-Git -GitArgs @("tag", "-a", $tag, "-m", "ImageZeus $tag")
 
     if ($NoPush) {
         Write-Host ""
-        Write-Host "Created commit and tag locally. Push later with:"
+        Write-Host "Created tag locally. Push later with:"
         Write-Host "  git push origin HEAD"
         Write-Host "  git push origin $tag"
         return
     }
 
-    Run-Git push origin HEAD
-    Run-Git push origin $tag
+    Run-Git -GitArgs @("push", "origin", "HEAD")
+    Run-Git -GitArgs @("push", "origin", $tag)
 
     Write-Host ""
     Write-Host "Release pushed. GitHub Actions should build and publish $tag."

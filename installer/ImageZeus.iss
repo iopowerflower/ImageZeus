@@ -7,7 +7,7 @@
 
 #define MyAppName "ImageZeus"
 #ifndef MyAppVersion
-#define MyAppVersion "1.0.7"
+#define MyAppVersion "1.0.8"
 #endif
 #define MyAppPublisher "ImageZeus"
 #define MyAppExeName "ImageZeus.exe"
