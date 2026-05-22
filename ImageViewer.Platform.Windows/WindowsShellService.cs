@@ -80,6 +80,50 @@ public sealed class WindowsShellService : IShellService
         }, cancellationToken);
     }
 
+    public async Task MoveFileAsync(string sourcePath, string destinationPath, CancellationToken cancellationToken)
+    {
+        var src = Canonicalize(sourcePath);
+        var dst = Canonicalize(destinationPath);
+        await Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var fileOp = new SHFILEOPSTRUCT
+            {
+                wFunc = FO_MOVE,
+                pFrom = src + '\0' + '\0',
+                pTo   = dst + '\0' + '\0',
+                fFlags = FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI,
+            };
+
+            var result = SHFileOperation(ref fileOp);
+            if (result != 0 || fileOp.fAnyOperationsAborted)
+                throw new IOException($"SHFileOperation FO_MOVE failed (code {result}) for '{src}'.");
+        }, cancellationToken);
+    }
+
+    public async Task CopyFileAsync(string sourcePath, string destinationPath, CancellationToken cancellationToken)
+    {
+        var src = Canonicalize(sourcePath);
+        var dst = Canonicalize(destinationPath);
+        await Task.Run(() =>
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            var fileOp = new SHFILEOPSTRUCT
+            {
+                wFunc = FO_COPY,
+                pFrom = src + '\0' + '\0',
+                pTo   = dst + '\0' + '\0',
+                fFlags = FOF_NOCONFIRMATION | FOF_SILENT | FOF_NOERRORUI,
+            };
+
+            var result = SHFileOperation(ref fileOp);
+            if (result != 0 || fileOp.fAnyOperationsAborted)
+                throw new IOException($"SHFileOperation FO_COPY failed (code {result}) for '{src}'.");
+        }, cancellationToken);
+    }
+
     private static string Canonicalize(string fullPath)
     {
         return Path.GetFullPath(fullPath);
@@ -123,6 +167,8 @@ public sealed class WindowsShellService : IShellService
     [DllImport("shell32.dll")]
     private static extern int SHOpenFolderAndSelectItems(IntPtr pidlFolder, uint cidl, IntPtr apidl, uint dwFlags);
 
+    private const int FO_MOVE   = 0x0001;
+    private const int FO_COPY   = 0x0002;
     private const int FO_DELETE = 0x0003;
     private const ushort FOF_ALLOWUNDO = 0x0040;
     private const ushort FOF_NOCONFIRMATION = 0x0010;

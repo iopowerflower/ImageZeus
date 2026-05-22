@@ -23,7 +23,7 @@
             BorderThickness="0,0,1,0"
             Padding="12,14">
       <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="6">
+        <StackPanel Spacing="6" Margin="0,0,6,0">
 
           <!-- Rating -->
           <TextBlock Classes="sectionHeader" Text="RATING" />
@@ -115,6 +115,30 @@
 
           <Button Classes="captureBtn" Content="Capture  [C]" Click="OnCapsCapture"
                   HorizontalAlignment="Stretch" Margin="0,4,0,0" />
+
+          <!-- Move -->
+          <Border Height="1" Background="#21262D" Margin="0,8" />
+          <TextBlock Classes="sectionHeader" Text="MOVE TO FOLDER" />
+          <StackPanel Spacing="4">
+            <TextBox Name="MoveDir" Watermark="Destination folder..." IsReadOnly="True" />
+            <Button Content="Browse..." Click="OnMoveBrowseClick" HorizontalAlignment="Stretch" />
+            <Grid ColumnDefinitions="*,*" HorizontalAlignment="Stretch">
+              <Button Grid.Column="0" Classes="moveBtn moveBtnLeft"
+                      Click="OnMovePrevClick" HorizontalContentAlignment="Right"
+                      Content="◀ Move" />
+              <Button Grid.Column="1" Classes="moveBtn moveBtnRight"
+                      Click="OnMoveNextClick" HorizontalContentAlignment="Left"
+                      Content="Move ▶" />
+            </Grid>
+            <Grid ColumnDefinitions="*,*" HorizontalAlignment="Stretch">
+              <Button Grid.Column="0" Classes="copyBtn copyBtnLeft"
+                      Click="OnCopyPrevClick" HorizontalContentAlignment="Right"
+                      Content="◀ Copy" />
+              <Button Grid.Column="1" Classes="copyBtn copyBtnRight"
+                      Click="OnCopyNextClick" HorizontalContentAlignment="Left"
+                      Content="Copy ▶" />
+            </Grid>
+          </StackPanel>
 
           <!-- Delete -->
           <Border Height="1" Background="#21262D" Margin="0,8" />
@@ -255,6 +279,7 @@
                   Background="#BF161B22"
                   BorderBrush="#28333D"
                   BorderThickness="1"
+                  IsHitTestVisible="False"
                   Opacity="0">
             <Border.Transitions>
               <Transitions>
@@ -265,6 +290,7 @@
                     Classes="scrubBar"
                     Minimum="0"
                     Maximum="0"
+                    IsHitTestVisible="False"
                     ValueChanged="OnBottomScrubSliderChanged" />
           </Border>
         </Grid>

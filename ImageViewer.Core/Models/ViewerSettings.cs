@@ -10,6 +10,8 @@ public sealed class ViewerSettings
 
     public CapsSettings Caps { get; set; } = new();
 
+    public OrganizerSettings Organizer { get; set; } = new();
+
     public int JpegFallbackQuality { get; set; } = 92;
 
     public WindowGeometry? Window { get; set; }
@@ -55,4 +57,9 @@ public sealed class CapsSettings
     public bool ResizeLargestDimensionEnabled { get; set; }
 
     public int ResizeLargestDimension { get; set; } = 1280;
+}
+
+public sealed class OrganizerSettings
+{
+    public string? MoveDirectory { get; set; }
 }

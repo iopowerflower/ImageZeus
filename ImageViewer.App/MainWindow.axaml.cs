@@ -35,6 +35,7 @@ public partial class MainWindow : Window
 
     private bool _miniPanelInteracting;
     private bool _scrubBarInteracting;
+    private bool _scrubBarDragging;
     private bool _syncingScrubSliders;
     private CancellationTokenSource? _scrubBarFadeCts;
     private CancellationTokenSource? _toastCts;
@@ -66,6 +67,8 @@ public partial class MainWindow : Window
         MiniPanelHitZone.AddHandler(PointerReleasedEvent, OnMiniPanelPointerReleased, handledEventsToo: true);
         ScrubBarHitZone.AddHandler(PointerPressedEvent, OnScrubBarPointerPressed, handledEventsToo: true);
         ScrubBarHitZone.AddHandler(PointerReleasedEvent, OnScrubBarPointerReleased, handledEventsToo: true);
+        ScrubBarHitZone.AddHandler(PointerMovedEvent, OnScrubBarPointerMoved, handledEventsToo: true);
+        ScrubBarHitZone.AddHandler(PointerCaptureLostEvent, OnScrubBarPointerCaptureLost, handledEventsToo: true);
         AddHandler(PointerPressedEvent, OnWindowPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
         CapsFormatCombo.SelectionChanged += (_, _) => SaveCapsSettings();
@@ -103,6 +106,7 @@ public partial class MainWindow : Window
                 if (ViewModel is null) return;
                 await ViewModel.InitializeAsync();
                 LoadCapsSettings();
+                LoadOrganizerSettings();
                 UpdateScrubRange();
             }, "Main window opened");
         }, DispatcherPriority.Normal);
@@ -599,10 +603,26 @@ public partial class MainWindow : Window
     {
         _scrubBarInteracting = true;
         ShowScrubBar();
+
+        if (!e.GetCurrentPoint(ScrubBarHitZone).Properties.IsLeftButtonPressed)
+            return;
+
+        _scrubBarDragging = true;
+        e.Pointer.Capture(ScrubBarHitZone);
+        UpdateScrubFromPointer(e.GetPosition(BottomScrubSlider).X);
+        e.Handled = true;
+    }
+
+    private void OnScrubBarPointerMoved(object? sender, PointerEventArgs e)
+    {
+        if (!_scrubBarDragging) return;
+        UpdateScrubFromPointer(e.GetPosition(BottomScrubSlider).X);
     }
 
     private async void OnScrubBarPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        EndScrubBarDrag(e.Pointer);
+
         _scrubBarInteracting = false;
         ScheduleScrubBarFade(force: true);
 
@@ -612,6 +632,39 @@ public partial class MainWindow : Window
             await ViewModel.EnsureCurrentLoadedAsync();
             RefitImage();
         }, "Ensure current after bottom scrub");
+    }
+
+    private void OnScrubBarPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        EndScrubBarDrag(null);
+        _scrubBarInteracting = false;
+        ScheduleScrubBarFade(force: true);
+    }
+
+    private void EndScrubBarDrag(IPointer? pointer)
+    {
+        if (!_scrubBarDragging) return;
+        _scrubBarDragging = false;
+        pointer?.Capture(null);
+    }
+
+    private void UpdateScrubFromPointer(double xRelativeToSlider)
+    {
+        if (BottomScrubSlider.Maximum <= 0) return;
+
+        var width = BottomScrubSlider.Bounds.Width;
+        if (width <= 0) return;
+
+        const double thumbHalfWidth = 8.0;
+        var trackStart = thumbHalfWidth;
+        var trackLength = width - thumbHalfWidth * 2;
+        if (trackLength <= 0) return;
+
+        var proportion = Math.Clamp((xRelativeToSlider - trackStart) / trackLength, 0.0, 1.0);
+        var target = Math.Round(proportion * BottomScrubSlider.Maximum);
+
+        if (Math.Abs(target - BottomScrubSlider.Value) > 0.0001)
+            BottomScrubSlider.Value = target;
     }
 
     private void ShowScrubBar()
@@ -910,6 +963,86 @@ public partial class MainWindow : Window
                 SaveCapsSettings();
             }
         }, "Caps browse folder");
+    }
+
+    private void LoadOrganizerSettings()
+    {
+        if (ViewModel is null) return;
+        MoveDir.Text = ViewModel.OrganizerSettings.MoveDirectory ?? string.Empty;
+    }
+
+    private void SaveOrganizerSettings()
+    {
+        if (!_uiReady || ViewModel is null) return;
+        ViewModel.OrganizerSettings.MoveDirectory = string.IsNullOrWhiteSpace(MoveDir.Text) ? null : MoveDir.Text;
+        ViewModel.PersistOrganizerSettings();
+    }
+
+    private async void OnMoveBrowseClick(object? sender, RoutedEventArgs e)
+    {
+        await RunLoggedAsync(async () =>
+        {
+            var startDir = !string.IsNullOrWhiteSpace(MoveDir.Text)
+                ? MoveDir.Text
+                : Path.GetDirectoryName(ViewModel?.CurrentEntry?.FullPath);
+
+            IStorageFolder? suggestedStart = null;
+            if (!string.IsNullOrEmpty(startDir))
+                suggestedStart = await StorageProvider.TryGetFolderFromPathAsync(startDir);
+
+            var folders = await StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Select Move Folder",
+                AllowMultiple = false,
+                SuggestedStartLocation = suggestedStart,
+            });
+
+            if (folders.Count > 0)
+            {
+                MoveDir.Text = folders[0].Path.LocalPath;
+                SaveOrganizerSettings();
+            }
+        }, "Move browse folder");
+    }
+
+    private async void OnMovePrevClick(object? sender, RoutedEventArgs e)
+    {
+        await RunLoggedAsync(async () =>
+        {
+            var msg = await (ViewModel?.MoveCurrentAsync(-1, MoveDir.Text) ?? Task.FromResult<string?>(null));
+            RefitImage();
+            if (msg is not null) ShowToast(msg);
+        }, "Move go prev");
+    }
+
+    private async void OnMoveNextClick(object? sender, RoutedEventArgs e)
+    {
+        await RunLoggedAsync(async () =>
+        {
+            var msg = await (ViewModel?.MoveCurrentAsync(1, MoveDir.Text) ?? Task.FromResult<string?>(null));
+            RefitImage();
+            if (msg is not null) ShowToast(msg);
+        }, "Move go next");
+    }
+
+    private async void OnCopyPrevClick(object? sender, RoutedEventArgs e)
+    {
+        await RunLoggedAsync(async () =>
+        {
+            var msg = await (ViewModel?.CopyCurrentAsync(-1, MoveDir.Text) ?? Task.FromResult<string?>(null));
+            RefitImage();
+            if (msg is not null) ShowToast(msg);
+        }, "Copy go prev");
+    }
+
+    private async void OnCopyNextClick(object? sender, RoutedEventArgs e)
+    {
+        await RunLoggedAsync(async () =>
+        {
+            var msg = await (ViewModel?.CopyCurrentAsync(1, MoveDir.Text) ?? Task.FromResult<string?>(null));
+            RefitImage();
+            if (msg is not null) ShowToast(msg);
+        }, "Copy go next");
     }
 
     private async void OnCapsCapture(object? sender, RoutedEventArgs e)

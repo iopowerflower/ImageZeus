@@ -208,6 +208,60 @@
     <Setter Property="Background" Value="#603030" />
   </Style>
 
+  <!-- Move button -->
+  <Style Selector="Button.moveBtn">
+    <Setter Property="Padding" Value="8,7" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Background" Value="#1A2D3D" />
+    <Setter Property="Foreground" Value="#70C8FF" />
+    <Setter Property="BorderBrush" Value="#2A506A" />
+    <Setter Property="BorderThickness" Value="1,1,0,1" />
+  </Style>
+  <Style Selector="Button.moveBtnLeft">
+    <Setter Property="CornerRadius" Value="6,0,0,6" />
+    <Setter Property="BorderThickness" Value="1,1,0,1" />
+  </Style>
+  <Style Selector="Button.moveBtnRight">
+    <Setter Property="CornerRadius" Value="0,6,6,0" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Button.moveBtn:pointerover">
+    <Setter Property="Background" Value="#243D50" />
+    <Setter Property="BorderBrush" Value="#4090B8" />
+  </Style>
+  <Style Selector="Button.moveBtn:pressed">
+    <Setter Property="Background" Value="#305060" />
+  </Style>
+
+  <!-- Copy button -->
+  <Style Selector="Button.copyBtn">
+    <Setter Property="Padding" Value="8,7" />
+    <Setter Property="CornerRadius" Value="0" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+    <Setter Property="Background" Value="#1A3D2A" />
+    <Setter Property="Foreground" Value="#70E8A0" />
+    <Setter Property="BorderBrush" Value="#2A6A46" />
+    <Setter Property="BorderThickness" Value="1,1,0,1" />
+  </Style>
+  <Style Selector="Button.copyBtnLeft">
+    <Setter Property="CornerRadius" Value="6,0,0,6" />
+    <Setter Property="BorderThickness" Value="1,1,0,1" />
+  </Style>
+  <Style Selector="Button.copyBtnRight">
+    <Setter Property="CornerRadius" Value="0,6,6,0" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Button.copyBtn:pointerover">
+    <Setter Property="Background" Value="#245038" />
+    <Setter Property="BorderBrush" Value="#40A068" />
+  </Style>
+  <Style Selector="Button.copyBtn:pressed">
+    <Setter Property="Background" Value="#306048" />
+  </Style>
+
   <!-- Star rating buttons -->
   <Style Selector="Button.starBtn">
     <Setter Property="Background" Value="Transparent" />

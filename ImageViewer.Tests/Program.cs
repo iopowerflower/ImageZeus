@@ -156,6 +156,10 @@ static async Task TestPersistenceRoundtripAsync()
             ResizeLargestDimensionEnabled = true,
             ResizeLargestDimension = 1024,
         },
+        Organizer = new OrganizerSettings
+        {
+            MoveDirectory = @"C:\sorted",
+        },
     };
 
     await store.SaveAsync(initial, CancellationToken.None);
@@ -167,6 +171,7 @@ static async Task TestPersistenceRoundtripAsync()
     AssertEqual(88, loaded.JpegFallbackQuality, "JPEG quality persisted");
     AssertEqual(true, loaded.Caps.SaveCapsEnabled, "Caps save persisted");
     AssertEqual(CapsOutputFormat.WebP, loaded.Caps.OutputFormat, "Caps output format persisted");
+    AssertEqual(@"C:\sorted", loaded.Organizer.MoveDirectory ?? "", "Move directory persisted");
 
     Directory.Delete(tempRoot, recursive: true);
 }

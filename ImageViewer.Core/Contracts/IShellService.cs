@@ -11,4 +11,8 @@ public interface IShellService
     void CopyFilesToClipboard(IReadOnlyList<string> fullPaths, bool cut);
 
     Task DeleteToRecycleBinAsync(string fullPath, CancellationToken cancellationToken);
+
+    Task MoveFileAsync(string sourcePath, string destinationPath, CancellationToken cancellationToken);
+
+    Task CopyFileAsync(string sourcePath, string destinationPath, CancellationToken cancellationToken);
 }

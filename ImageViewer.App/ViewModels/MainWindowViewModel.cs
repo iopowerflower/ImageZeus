@@ -26,7 +26,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private ImageCacheLease? _currentLease;
     private CancellationTokenSource _loadCts = new();
     private int _loadGeneration;
-    private int _appliedGeneration;
+    private readonly object _loadGate = new();
+    private (string Path, int Generation)? _pendingLoadTarget;
+    private bool _loadWorkerRunning;
 
     private WriteableBitmap? _currentImage;
     private int _currentIndex = -1;
@@ -244,6 +246,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             var settingsTask = _services.SettingsStore.LoadAsync(CancellationToken.None);
 
             _settings = await settingsTask;
+            _settings.Organizer ??= new OrganizerSettings();
             _settingsLoaded = true;
             IsSidePanelOpen = _settings.IsSidePanelOpen;
 
@@ -276,7 +279,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             {
                 var lease = await decodeTask;
                 Interlocked.Increment(ref _loadGeneration);
-                Volatile.Write(ref _appliedGeneration, _loadGeneration);
                 ApplyLease(lease, 0);
             }
             catch (Exception ex)
@@ -493,7 +495,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public CapsSettings CapsSettings => _settings.Caps;
 
+    public OrganizerSettings OrganizerSettings => _settings.Organizer;
+
     public void PersistCapsSettings()
+    {
+        PersistSettings();
+    }
+
+    public void PersistOrganizerSettings()
     {
         PersistSettings();
     }
@@ -817,6 +826,121 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         }, "Delete image");
     }
 
+    public async Task<string?> MoveCurrentAsync(int direction, string? destinationDirectory)
+    {
+        var entry = CurrentEntry;
+        if (entry is null) return null;
+
+        if (string.IsNullOrWhiteSpace(destinationDirectory))
+            return "Choose a move folder";
+
+        var sourcePath = Path.GetFullPath(entry.FullPath);
+        var destinationRoot = Path.GetFullPath(destinationDirectory);
+        var sourceDirectory = Path.GetDirectoryName(sourcePath);
+
+        if (sourceDirectory is not null &&
+            sourceDirectory.Equals(destinationRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Already in selected folder";
+        }
+
+        var destinationPath = Path.Combine(destinationRoot, Path.GetFileName(sourcePath));
+        if (File.Exists(destinationPath))
+            return "File already exists in move folder";
+
+        var previousImages = _images;
+        var previousIndex = _currentIndex;
+        var movedIndex = _currentIndex;
+
+        try
+        {
+            var list = _images.ToList();
+            if (movedIndex >= 0 && movedIndex < list.Count)
+                list.RemoveAt(movedIndex);
+
+            if (list.Count == 0)
+            {
+                _images = list;
+                _currentIndex = -1;
+                SetCurrentLease(null);
+                CurrentImage = null;
+                RaiseNavigationProperties();
+            }
+            else
+            {
+                var targetIndex = direction < 0
+                    ? (movedIndex > 0 ? movedIndex - 1 : list.Count - 1)
+                    : (movedIndex < list.Count ? movedIndex : 0);
+
+                _images = list;
+                _currentIndex = targetIndex;
+                RaiseNavigationProperties();
+                await LoadCurrentAsync();
+            }
+
+            _services.DecodePipeline.Invalidate(sourcePath);
+            Directory.CreateDirectory(destinationRoot);
+            await _services.ShellService.MoveFileAsync(sourcePath, destinationPath, CancellationToken.None);
+            return null;
+        }
+        catch (Exception ex)
+        {
+            _services.CrashLogger.Log(ex, $"Move image '{sourcePath}'");
+
+            var selectedPath = CurrentEntry?.FullPath;
+            _images = previousImages;
+            _currentIndex = selectedPath is null
+                ? previousIndex
+                : _images.ToList().FindIndex(x => x.FullPath.Equals(selectedPath, StringComparison.OrdinalIgnoreCase));
+            if (_currentIndex < 0 && _images.Count > 0)
+                _currentIndex = Math.Clamp(previousIndex, 0, _images.Count - 1);
+
+            RaiseNavigationProperties();
+            if (CurrentImage is null)
+                await LoadCurrentAsync();
+
+            return "Move failed";
+        }
+    }
+
+    public async Task<string?> CopyCurrentAsync(int direction, string? destinationDirectory)
+    {
+        var entry = CurrentEntry;
+        if (entry is null) return null;
+
+        if (string.IsNullOrWhiteSpace(destinationDirectory))
+            return "Choose a copy folder";
+
+        var sourcePath = Path.GetFullPath(entry.FullPath);
+        var destinationRoot = Path.GetFullPath(destinationDirectory);
+        var sourceDirectory = Path.GetDirectoryName(sourcePath);
+
+        if (sourceDirectory is not null &&
+            sourceDirectory.Equals(destinationRoot, StringComparison.OrdinalIgnoreCase))
+        {
+            return "Already in selected folder";
+        }
+
+        var destinationPath = Path.Combine(destinationRoot, Path.GetFileName(sourcePath));
+        if (File.Exists(destinationPath))
+            return "File already exists in copy folder";
+
+        try
+        {
+            var wrapMessage = await NavigateAsync(direction);
+
+            Directory.CreateDirectory(destinationRoot);
+            await _services.ShellService.CopyFileAsync(sourcePath, destinationPath, CancellationToken.None);
+
+            return wrapMessage;
+        }
+        catch (Exception ex)
+        {
+            _services.CrashLogger.Log(ex, $"Copy image '{sourcePath}'");
+            return "Copy failed";
+        }
+    }
+
     public async Task SetRatingAsync(uint stars)
     {
         var entry = CurrentEntry;
@@ -1067,51 +1191,98 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         await LoadCurrentAsync();
     }
 
-    private async Task LoadCurrentAsync()
+    private Task LoadCurrentAsync()
     {
         StopAnimation();
 
         if (_currentIndex < 0 || _currentIndex >= _images.Count)
         {
             SetCurrentLease(null);
-            return;
+            return Task.CompletedTask;
         }
 
-        var myGen = Interlocked.Increment(ref _loadGeneration);
         var targetPath = _images[_currentIndex].FullPath;
+        var myGen = Interlocked.Increment(ref _loadGeneration);
 
         var cachedLease = _services.DecodePipeline.TryAcquireCached(targetPath);
         if (cachedLease is not null)
         {
-            if (myGen <= Volatile.Read(ref _appliedGeneration))
-            {
-                cachedLease.Dispose();
-                return;
-            }
-            Volatile.Write(ref _appliedGeneration, myGen);
             var navGen = _loadCoordinator.BeginNavigation();
             ApplyLease(cachedLease, navGen);
-            return;
+            return Task.CompletedTask;
         }
 
-        var navGeneration = _loadCoordinator.BeginNavigation();
+        bool startWorker;
+        lock (_loadGate)
+        {
+            _pendingLoadTarget = (targetPath, myGen);
+            startWorker = !_loadWorkerRunning;
+            if (startWorker)
+                _loadWorkerRunning = true;
+        }
 
+        if (startWorker)
+            _ = Task.Run(LoadWorkerAsync);
+
+        return Task.CompletedTask;
+    }
+
+    private async Task LoadWorkerAsync()
+    {
         try
         {
-            var lease = await _services.DecodePipeline.LoadAsync(targetPath, CancellationToken.None);
-
-            if (myGen <= Volatile.Read(ref _appliedGeneration))
+            while (true)
             {
-                lease.Dispose();
-                return;
-            }
+                (string Path, int Generation) target;
+                lock (_loadGate)
+                {
+                    if (_pendingLoadTarget is null)
+                    {
+                        _loadWorkerRunning = false;
+                        return;
+                    }
+                    target = _pendingLoadTarget.Value;
+                    _pendingLoadTarget = null;
+                }
 
-            Volatile.Write(ref _appliedGeneration, myGen);
-            ApplyLease(lease, navGeneration);
+                if (_disposed) return;
+
+                ImageCacheLease? lease = null;
+                try
+                {
+                    lease = await _services.DecodePipeline.LoadAsync(target.Path, CancellationToken.None);
+                }
+                catch (Exception ex)
+                {
+                    _services.CrashLogger.Log(ex, $"Background load '{target.Path}'");
+                    continue;
+                }
+
+                try
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() =>
+                    {
+                        if (_disposed)
+                        {
+                            lease.Dispose();
+                            return;
+                        }
+
+                        var navGen = _loadCoordinator.BeginNavigation();
+                        ApplyLease(lease, navGen);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    lease.Dispose();
+                    _services.CrashLogger.Log(ex, $"Apply background load '{target.Path}'");
+                }
+            }
         }
-        catch (Exception ex) when (ex is not OperationCanceledException)
+        catch (Exception ex)
         {
-            _services.CrashLogger.Log(ex, $"Load image '{targetPath}'");
+            _services.CrashLogger.Log(ex, "Load worker failed");
+            lock (_loadGate) { _loadWorkerRunning = false; }
         }
     }
 
