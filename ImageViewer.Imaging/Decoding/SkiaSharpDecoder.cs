@@ -5,12 +5,20 @@ namespace ImageViewer.Imaging.Decoding;
 
 public sealed class SkiaSharpDecoder : IImageDecoder
 {
-    public async Task<DecodedImage> DecodeAsync(string fullPath, DecodeLimits limits, CancellationToken cancellationToken)
+    public async Task<DecodedImage> DecodeAsync(
+        string fullPath,
+        DecodeLimits limits,
+        DecodeMode mode,
+        CancellationToken cancellationToken)
     {
-        return await Task.Run(() => DecodeSync(fullPath, limits, cancellationToken), cancellationToken);
+        return await Task.Run(() => DecodeSync(fullPath, limits, mode, cancellationToken), cancellationToken);
     }
 
-    private static DecodedImage DecodeSync(string fullPath, DecodeLimits limits, CancellationToken cancellationToken)
+    private static DecodedImage DecodeSync(
+        string fullPath,
+        DecodeLimits limits,
+        DecodeMode mode,
+        CancellationToken cancellationToken)
     {
         var canonicalPath = Path.GetFullPath(fullPath);
         var info = new FileInfo(canonicalPath);
@@ -49,12 +57,21 @@ public sealed class SkiaSharpDecoder : IImageDecoder
             var frame = DecodeSingleFrame(codec, skInfo);
             frames.Add(frame);
         }
+        else if (mode == DecodeMode.FirstFrameOnly)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var frameInfos = codec.FrameInfo;
+            var duration = frameInfos.Length > 0 ? frameInfos[0].Duration : 100;
+            if (duration <= 0) duration = 100;
+            frames.Add(DecodeFrame(codec, skInfo, 0, TimeSpan.FromMilliseconds(duration)));
+        }
         else
         {
             DecodeAllAnimationFrames(codec, skInfo, frameCount, frames, cancellationToken);
         }
 
-        return new DecodedImage(canonicalPath, frames);
+        var totalFrameCount = mode == DecodeMode.AllFrames ? frames.Count : frameCount;
+        return new DecodedImage(canonicalPath, frames, totalFrameCount);
     }
 
     private static DecodedFrame DecodeSingleFrame(SKCodec codec, SKImageInfo skInfo)
@@ -67,6 +84,18 @@ public sealed class SkiaSharpDecoder : IImageDecoder
             throw new InvalidDataException($"SkiaSharp decode failed: {result}");
 
         return ExtractFrame(bitmap, TimeSpan.FromMilliseconds(100));
+    }
+
+    private static DecodedFrame DecodeFrame(SKCodec codec, SKImageInfo skInfo, int frameIndex, TimeSpan duration)
+    {
+        var targetInfo = new SKImageInfo(skInfo.Width, skInfo.Height, SKColorType.Bgra8888, SKAlphaType.Premul);
+        using var bitmap = new SKBitmap(targetInfo);
+
+        var result = codec.GetPixels(targetInfo, bitmap.GetPixels(), new SKCodecOptions(frameIndex));
+        if (result != SKCodecResult.Success && result != SKCodecResult.IncompleteInput)
+            throw new InvalidDataException($"SkiaSharp decode failed for frame {frameIndex}: {result}");
+
+        return ExtractFrame(bitmap, duration);
     }
 
     private static void DecodeAllAnimationFrames(SKCodec codec, SKImageInfo skInfo, int frameCount,
@@ -103,7 +132,9 @@ public sealed class SkiaSharpDecoder : IImageDecoder
                 }
 
                 using var frameBitmap = new SKBitmap(targetInfo);
-                var options = new SKCodecOptions(i);
+                var options = priorFrame >= 0
+                    ? new SKCodecOptions(i, priorFrame)
+                    : new SKCodecOptions(i);
                 var result = codec.GetPixels(targetInfo, frameBitmap.GetPixels(), options);
 
                 if (result != SKCodecResult.Success && result != SKCodecResult.IncompleteInput)

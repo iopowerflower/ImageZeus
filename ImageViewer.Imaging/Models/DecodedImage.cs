@@ -4,17 +4,22 @@ public sealed class DecodedImage : IDisposable
 {
     private bool _disposed;
 
-    public DecodedImage(string key, IReadOnlyList<DecodedFrame> frames)
+    public DecodedImage(string key, IReadOnlyList<DecodedFrame> frames, int? totalFrameCount = null)
     {
         Key = key;
         Frames = frames;
+        TotalFrameCount = totalFrameCount ?? frames.Count;
     }
 
     public string Key { get; }
 
     public IReadOnlyList<DecodedFrame> Frames { get; }
 
-    public bool IsAnimated => Frames.Count > 1;
+    public int TotalFrameCount { get; }
+
+    public bool IsAnimated => TotalFrameCount > 1;
+
+    public bool IsFullyDecoded => Frames.Count >= TotalFrameCount;
 
     public int Width => Frames.Count == 0 ? 0 : Frames[0].Width;
 

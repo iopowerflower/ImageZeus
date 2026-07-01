@@ -25,6 +25,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private IReadOnlyList<ImageEntry> _images = Array.Empty<ImageEntry>();
     private ImageCacheLease? _currentLease;
     private CancellationTokenSource _loadCts = new();
+    private CancellationTokenSource _animationLoadCts = new();
     private int _loadGeneration;
     private readonly object _loadGate = new();
     private (string Path, int Generation)? _pendingLoadTarget;
@@ -200,6 +201,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     }
 
     public int AnimFrameCount => _currentLease?.Image?.Frames.Count ?? 0;
+
+    public int CurrentImageLoadVersion { get; private set; }
 
     public int AnimFrameIndex
     {
@@ -523,9 +526,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         var frames = _currentLease.Image.Frames;
         frameIndex = Math.Clamp(frameIndex, 0, frames.Count - 1);
 
+        var resumePlayback = IsAnimPlaying;
         StopAnimation();
         AnimFrameIndex = frameIndex;
         ShowFrame(frameIndex);
+        if (resumePlayback)
+            StartAnimation();
     }
 
     private void StartAnimation()
@@ -533,6 +539,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (_currentLease?.Image is null || !IsAnimated) return;
 
         var frames = _currentLease.Image.Frames;
+        if (frames.Count <= 1) return;
+
         var intervalMs = frames[_animFrameIndex].Duration.TotalMilliseconds;
         if (intervalMs < 10) intervalMs = 100;
 
@@ -552,7 +560,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void OnAnimTimerTick(object? sender, EventArgs e)
     {
-        if (_currentLease?.Image is null || !IsAnimated)
+        if (_currentLease?.Image is null || !IsAnimated || _currentLease.Image.Frames.Count <= 1)
         {
             StopAnimation();
             return;
@@ -1161,6 +1169,9 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _loadCts.Cancel();
         _loadCts.Dispose();
 
+        _animationLoadCts.Cancel();
+        _animationLoadCts.Dispose();
+
         _currentLease?.Dispose();
         _currentLease = null;
 
@@ -1288,25 +1299,72 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private void ApplyLease(ImageCacheLease lease, long navGeneration)
     {
+        var isDifferentImage = _currentLease?.Image?.Key.Equals(lease.Image.Key, StringComparison.OrdinalIgnoreCase) != true;
+
+        _animationLoadCts.Cancel();
+        _animationLoadCts.Dispose();
+        _animationLoadCts = new CancellationTokenSource();
+
         SetCurrentLease(lease);
         ClearTransformState();
 
         var frame = lease.Image.Frames[0];
         var bitmap = PixelFrameAvaloniaBlitter.CreateWriteableBitmap(frame);
         CurrentImage = bitmap;
+        if (isDifferentImage)
+        {
+            CurrentImageLoadVersion++;
+            OnPropertyChanged(nameof(CurrentImageLoadVersion));
+        }
 
         IsAnimated = lease.Image.IsAnimated;
         AnimFrameIndex = 0;
         OnPropertyChanged(nameof(AnimFrameCount));
 
-        if (IsAnimated)
+        if (IsAnimated && lease.Image.IsFullyDecoded)
             StartAnimation();
+        else if (IsAnimated)
+            ScheduleFullAnimationLoad(lease.Image.Key, _animationLoadCts.Token);
 
         OnPropertyChanged(nameof(ExifText));
         OnPropertyChanged(nameof(WindowTitle));
 
         LoadCurrentRating();
         SchedulePreload(navGeneration);
+    }
+
+    private void ScheduleFullAnimationLoad(string path, CancellationToken cancellationToken)
+    {
+        _ = Task.Run(async () =>
+        {
+            ImageCacheLease? lease = null;
+            try
+            {
+                lease = await _services.DecodePipeline.LoadFullAnimationAsync(path, cancellationToken);
+
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (_disposed || cancellationToken.IsCancellationRequested ||
+                        CurrentEntry?.FullPath.Equals(lease.Image.Key, StringComparison.OrdinalIgnoreCase) != true)
+                    {
+                        lease.Dispose();
+                        return;
+                    }
+
+                    var navGen = _loadCoordinator.BeginNavigation();
+                    ApplyLease(lease, navGen);
+                });
+            }
+            catch (OperationCanceledException)
+            {
+                lease?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                lease?.Dispose();
+                _services.CrashLogger.Log(ex, $"Load full animation '{path}'");
+            }
+        }, cancellationToken);
     }
 
     private async void LoadCurrentRating()

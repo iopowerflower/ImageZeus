@@ -30,9 +30,13 @@ public sealed class ImageDecodePipeline
     {
         var key = Path.GetFullPath(fullPath);
         _cache.Remove(key);
-        _inFlight.TryRemove(key, out _);
-        if (_decodedLeases.TryRemove(key, out var stale))
-            stale.Dispose();
+        foreach (DecodeMode mode in Enum.GetValues<DecodeMode>())
+        {
+            var operationKey = BuildOperationKey(key, mode);
+            _inFlight.TryRemove(operationKey, out _);
+            if (_decodedLeases.TryRemove(operationKey, out var stale))
+                stale.Dispose();
+        }
     }
 
     public ImageCacheLease? TryAcquireCached(string fullPath)
@@ -45,17 +49,40 @@ public sealed class ImageDecodePipeline
 
     public async Task<ImageCacheLease> LoadAsync(string fullPath, CancellationToken cancellationToken)
     {
+        return await LoadInternalAsync(fullPath, DecodeMode.FirstFrameOnly, allowPartialCacheHit: true, cancellationToken);
+    }
+
+    public async Task<ImageCacheLease> LoadFullAnimationAsync(string fullPath, CancellationToken cancellationToken)
+    {
+        return await LoadInternalAsync(fullPath, DecodeMode.AllFrames, allowPartialCacheHit: false, cancellationToken);
+    }
+
+    private async Task<ImageCacheLease> LoadInternalAsync(
+        string fullPath,
+        DecodeMode mode,
+        bool allowPartialCacheHit,
+        CancellationToken cancellationToken)
+    {
         var key = Path.GetFullPath(fullPath);
+        var operationKey = BuildOperationKey(key, mode);
 
         if (_cache.TryAcquire(key, out var cachedLease) && cachedLease is not null)
-            return cachedLease;
+        {
+            if (allowPartialCacheHit || cachedLease.Image.IsFullyDecoded || !cachedLease.Image.IsAnimated)
+                return cachedLease;
 
-        var decodeTask = _inFlight.GetOrAdd(key, _ => DecodeAsync(key));
+            cachedLease.Dispose();
+        }
+
+        if (mode == DecodeMode.AllFrames)
+            return await DecodeAndCacheAsync(key, mode, cancellationToken);
+
+        var decodeTask = _inFlight.GetOrAdd(operationKey, _ => DecodeAsync(key, mode, CancellationToken.None));
 
         if (decodeTask.IsFaulted)
         {
-            _inFlight.TryRemove(key, out _);
-            decodeTask = _inFlight.GetOrAdd(key, _ => DecodeAsync(key));
+            _inFlight.TryRemove(operationKey, out _);
+            decodeTask = _inFlight.GetOrAdd(operationKey, _ => DecodeAsync(key, mode, CancellationToken.None));
         }
 
         try
@@ -69,11 +96,11 @@ public sealed class ImageDecodePipeline
         finally
         {
             if (decodeTask.IsCompleted)
-                _inFlight.TryRemove(key, out _);
+                _inFlight.TryRemove(operationKey, out _);
         }
 
         // The decode holds a lease that's safe from eviction. Transfer it to the caller.
-        if (_decodedLeases.TryRemove(key, out var held))
+        if (_decodedLeases.TryRemove(operationKey, out var held))
             return held;
 
         // Fallback: try cache directly (shouldn't normally be needed)
@@ -83,25 +110,40 @@ public sealed class ImageDecodePipeline
         throw new InvalidOperationException($"Decode completed but cache acquire failed for '{key}'.");
     }
 
-    private async Task DecodeAsync(string key)
+    private async Task<ImageCacheLease> DecodeAndCacheAsync(
+        string key,
+        DecodeMode mode,
+        CancellationToken cancellationToken)
     {
+        var decoded = await _decoder.DecodeAsync(key, _limits, mode, cancellationToken);
+        var lease = _cache.PutAndAcquire(key, decoded);
+        if (lease is not null)
+            return lease;
+
+        throw new InvalidOperationException($"Decode completed but cache acquire failed for '{key}'.");
+    }
+
+    private async Task DecodeAsync(string key, DecodeMode mode, CancellationToken cancellationToken)
+    {
+        var operationKey = BuildOperationKey(key, mode);
         try
         {
-            var decoded = await _decoder.DecodeAsync(key, _limits, CancellationToken.None);
-            var lease = _cache.PutAndAcquire(key, decoded);
-            if (lease is not null)
-            {
-                // Hold a lease to prevent eviction before the caller picks it up
-                var old = _decodedLeases.GetOrAdd(key, lease);
-                if (!ReferenceEquals(old, lease))
-                    lease.Dispose();
-            }
+            var lease = await DecodeAndCacheAsync(key, mode, cancellationToken);
+            // Hold a lease to prevent eviction before the caller picks it up.
+            var old = _decodedLeases.GetOrAdd(operationKey, lease);
+            if (!ReferenceEquals(old, lease))
+                lease.Dispose();
         }
         catch (Exception ex)
         {
             _crashLogger.Log(ex, $"Decode failed for {key}");
-            _inFlight.TryRemove(key, out _);
+            _inFlight.TryRemove(operationKey, out _);
             throw;
         }
+    }
+
+    private static string BuildOperationKey(string key, DecodeMode mode)
+    {
+        return $"{mode}:{key}";
     }
 }

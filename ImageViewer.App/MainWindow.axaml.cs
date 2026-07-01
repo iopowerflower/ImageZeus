@@ -36,6 +36,7 @@ public partial class MainWindow : Window
     private bool _miniPanelInteracting;
     private bool _scrubBarInteracting;
     private bool _scrubBarDragging;
+    private bool _frameSliderInteracting;
     private bool _syncingScrubSliders;
     private CancellationTokenSource? _scrubBarFadeCts;
     private CancellationTokenSource? _toastCts;
@@ -69,6 +70,9 @@ public partial class MainWindow : Window
         ScrubBarHitZone.AddHandler(PointerReleasedEvent, OnScrubBarPointerReleased, handledEventsToo: true);
         ScrubBarHitZone.AddHandler(PointerMovedEvent, OnScrubBarPointerMoved, handledEventsToo: true);
         ScrubBarHitZone.AddHandler(PointerCaptureLostEvent, OnScrubBarPointerCaptureLost, handledEventsToo: true);
+        FrameSlider.AddHandler(PointerPressedEvent, OnFrameSliderPointerPressed, handledEventsToo: true);
+        FrameSlider.AddHandler(PointerReleasedEvent, OnFrameSliderPointerReleased, handledEventsToo: true);
+        FrameSlider.AddHandler(PointerCaptureLostEvent, OnFrameSliderPointerCaptureLost, handledEventsToo: true);
         AddHandler(PointerPressedEvent, OnWindowPointerPressed, Avalonia.Interactivity.RoutingStrategies.Tunnel);
 
         CapsFormatCombo.SelectionChanged += (_, _) => SaveCapsSettings();
@@ -218,10 +222,15 @@ public partial class MainWindow : Window
     {
         if (e.PropertyName is nameof(MainWindowViewModel.CurrentImage))
         {
+            PositionImage();
+        }
+
+        if (e.PropertyName is nameof(MainWindowViewModel.CurrentImageLoadVersion))
+        {
             var img = ViewModel?.CurrentImage;
             var newSize = img?.PixelSize ?? default;
 
-            if (ViewModel is not null && !ViewModel.ZoomFix && newSize != _lastFitSize)
+            if (ViewModel is not null && !ViewModel.ZoomFix)
             {
                 _lastFitSize = newSize;
                 if (ViewerArea.Bounds.Width > 0 && ViewerArea.Bounds.Height > 0)
@@ -421,7 +430,7 @@ public partial class MainWindow : Window
         {
             if (ViewModel is null) return;
             await ViewModel.EnsureCurrentLoadedAsync();
-            RefitImage();
+            PositionImage();
         }, "Ensure current after scrub");
     }
 
@@ -762,11 +771,26 @@ public partial class MainWindow : Window
         ViewModel?.ToggleAnimPlayPause();
     }
 
+    private void OnFrameSliderPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        _frameSliderInteracting = true;
+    }
+
+    private void OnFrameSliderPointerReleased(object? sender, PointerReleasedEventArgs e)
+    {
+        _frameSliderInteracting = false;
+    }
+
+    private void OnFrameSliderPointerCaptureLost(object? sender, PointerCaptureLostEventArgs e)
+    {
+        _frameSliderInteracting = false;
+    }
+
     private void OnFrameSliderChanged(object? sender, RangeBaseValueChangedEventArgs e)
     {
         if (!_uiReady || ViewModel is null) return;
 
-        if (ViewModel.IsAnimPlaying) return;
+        if (ViewModel.IsAnimPlaying && !_frameSliderInteracting) return;
 
         ViewModel.SeekAnimFrame((int)Math.Round(e.NewValue));
     }
