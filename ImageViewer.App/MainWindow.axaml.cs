@@ -13,6 +13,8 @@ using ImageViewer.App.ViewModels;
 using ImageViewer.Core.Caps;
 using ImageViewer.Core.Models;
 using ImageViewer.Core.Services;
+using ImageViewer.Imaging.Models;
+using ImageViewer.Platform.Windows;
 using SkiaSharp;
 
 namespace ImageViewer.App;
@@ -22,6 +24,7 @@ public partial class MainWindow : Window
     private MenuItem? _zoomFixMenuItem;
     private MenuItem? _fullscreenMenuItem;
     private MenuItem? _sortDirectionMenuItem;
+    private MenuItem? _setCapHotkeyMenuItem;
     private readonly List<(MenuItem Item, SortField Field, string Label)> _sortFieldMenuItems = new();
     private bool _isFullscreen;
     private bool _isPanning;
@@ -111,6 +114,7 @@ public partial class MainWindow : Window
                 await ViewModel.InitializeAsync();
                 LoadCapsSettings();
                 LoadOrganizerSettings();
+                SyncCaptureHotkeyLabel();
                 UpdateScrubRange();
             }, "Main window opened");
         }, DispatcherPriority.Normal);
@@ -141,11 +145,41 @@ public partial class MainWindow : Window
         _scrubBarFadeCts = null;
     }
 
+    private void HandleClipboardPaste()
+    {
+        if (Application.Current is not App app) return;
+
+        InMemoryImageSource? source = null;
+        try
+        {
+            source = WindowsClipboardHelper.TryReadBitmapFromClipboard();
+        }
+        catch
+        {
+            // best effort — treat as no image
+        }
+
+        if (source is null)
+        {
+            ShowToast("No image on clipboard");
+            return;
+        }
+
+        app.OpenMemoryViewer(source);
+    }
+
     private async void OnWindowKeyDown(object? sender, KeyEventArgs e)
     {
         await RunLoggedAsync(async () =>
         {
             if (ViewModel is null) return;
+
+            if (e.Key == Key.V && (e.KeyModifiers & KeyModifiers.Control) != 0)
+            {
+                HandleClipboardPaste();
+                e.Handled = true;
+                return;
+            }
 
             switch (e.Key)
             {
@@ -170,7 +204,7 @@ public partial class MainWindow : Window
                 case Key.F:
                     ToggleFullscreen();
                     break;
-                case Key.Q:
+                case Key.Q when e.KeyModifiers == KeyModifiers.None:
                     Close();
                     break;
                 case Key.Z:
@@ -1344,7 +1378,14 @@ public partial class MainWindow : Window
         copyImage.Click += async (_, _) => await CopyRenderedImageToClipboardAsync();
 
         var settings = new MenuItem { Header = "Settings" };
-        settings.Click += (_, _) => { };
+
+        _setCapHotkeyMenuItem = new MenuItem
+        {
+            Header = $"Set Cap Hotkey: {GetCurrentCaptureHotkeyDisplay()}",
+            StaysOpenOnClick = true,
+        };
+        _setCapHotkeyMenuItem.Click += (_, _) => BeginCaptureHotkeySetting(_setCapHotkeyMenuItem);
+        settings.Items.Add(_setCapHotkeyMenuItem);
 
         var showExif = new MenuItem { Header = "Show/Hide EXIF" };
         showExif.Click += (_, _) => ViewModel?.ToggleExifOverlay();
@@ -1426,7 +1467,11 @@ public partial class MainWindow : Window
             },
         };
 
-        contextMenu.Opening += (_, _) => SyncMenuChecks();
+        contextMenu.Opening += (_, _) =>
+        {
+            SyncMenuChecks();
+            SyncCaptureHotkeyLabel();
+        };
         ViewerArea.ContextMenu = contextMenu;
     }
 
@@ -1478,10 +1523,135 @@ public partial class MainWindow : Window
         return item;
     }
 
+    private string GetCurrentCaptureHotkeyDisplay()
+    {
+        try
+        {
+            var settings = ViewModel?.Settings?.Capture?.Hotkey;
+            return settings?.Display ?? HotkeyBinding.DefaultCapture.Display;
+        }
+        catch
+        {
+            return HotkeyBinding.DefaultCapture.Display;
+        }
+    }
+
+    private void SyncCaptureHotkeyLabel()
+    {
+        if (_setCapHotkeyMenuItem is null) return;
+        if (_setCapHotkeyMenuItem.Header?.ToString()?.StartsWith("Use hotkey now", StringComparison.Ordinal) == true)
+            return;
+
+        _setCapHotkeyMenuItem.Header = $"Set Cap Hotkey: {GetCurrentCaptureHotkeyDisplay()}";
+    }
+
+    private void BeginCaptureHotkeySetting(MenuItem item)
+    {
+        if (item.Header?.ToString()?.StartsWith("Use hotkey now", StringComparison.Ordinal) == true)
+            return;
+
+        var originalHeader = item.Header;
+        item.Header = "Use hotkey now (Esc to cancel)";
+        Focus();
+
+        var captured = false;
+
+        EventHandler<KeyEventArgs>? keyHandler = null;
+        EventHandler<RoutedEventArgs>? lostFocusHandler = null;
+        EventHandler? closedHandler = null;
+
+        void Cleanup()
+        {
+            RemoveHandler(KeyDownEvent, keyHandler);
+            item.RemoveHandler(KeyDownEvent, keyHandler);
+            LostFocus -= lostFocusHandler;
+            Closed -= closedHandler;
+        }
+
+        keyHandler = async (_, e) =>
+        {
+            if (captured) return;
+
+            if (e.Key == Key.Escape)
+            {
+                captured = true;
+                item.Header = originalHeader;
+                Cleanup();
+                e.Handled = true;
+                return;
+            }
+
+            var modifiers = e.KeyModifiers;
+            if (e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl ||
+                e.Key == Key.LeftAlt || e.Key == Key.RightAlt ||
+                e.Key == Key.LeftShift || e.Key == Key.RightShift ||
+                e.Key == Key.LWin || e.Key == Key.RWin)
+            {
+                return;
+            }
+
+            var keyName = e.Key.ToString();
+            if (string.IsNullOrEmpty(keyName)) return;
+
+            captured = true;
+            var binding = new HotkeyBinding
+            {
+                Ctrl = (modifiers & KeyModifiers.Control) != 0,
+                Alt = (modifiers & KeyModifiers.Alt) != 0,
+                Shift = (modifiers & KeyModifiers.Shift) != 0,
+                Win = (modifiers & KeyModifiers.Meta) != 0,
+                Key = keyName,
+            };
+
+            try
+            {
+                if (ViewModel is not null)
+                {
+                    ViewModel.Settings.Capture ??= new CaptureSettings();
+                    ViewModel.Settings.Capture.Hotkey = binding;
+                    await ViewModel.PersistSettingsImmediatelyAsync();
+                }
+
+                if (Application.Current is App app)
+                    app.ReRegisterHotkey(binding);
+            }
+            catch
+            {
+                // best effort
+            }
+
+            item.Header = $"Set Cap Hotkey: {binding.Display}";
+            Cleanup();
+            e.Handled = true;
+        };
+
+        lostFocusHandler = (_, _) =>
+        {
+            if (captured) return;
+            captured = true;
+            item.Header = originalHeader;
+            Cleanup();
+        };
+
+        closedHandler = (_, _) =>
+        {
+            if (!captured)
+            {
+                captured = true;
+                item.Header = originalHeader;
+                Cleanup();
+            }
+        };
+
+        AddHandler(KeyDownEvent, keyHandler, handledEventsToo: true);
+        item.AddHandler(KeyDownEvent, keyHandler, handledEventsToo: true);
+        LostFocus += lostFocusHandler;
+        Closed += closedHandler;
+    }
+
     private void SyncMenuChecks()
     {
         if (ViewModel is null) return;
-
         if (_zoomFixMenuItem is not null)
             _zoomFixMenuItem.IsChecked = ViewModel.ZoomFix;
 

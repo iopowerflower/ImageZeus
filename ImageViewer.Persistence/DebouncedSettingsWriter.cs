@@ -39,6 +39,26 @@ public sealed class DebouncedSettingsWriter : IDisposable
         _ = PersistAfterDelayAsync(_pendingWriteCts.Token);
     }
 
+    public async Task SaveImmediatelyAsync(ViewerSettings settings, CancellationToken cancellationToken)
+    {
+        CancellationTokenSource? toCancel;
+        ViewerSettings snapshot;
+
+        lock (_gate)
+        {
+            ThrowIfDisposed();
+            snapshot = CloneSettings(settings);
+            _latest = snapshot;
+            toCancel = _pendingWriteCts;
+            _pendingWriteCts = null;
+        }
+
+        toCancel?.Cancel();
+        toCancel?.Dispose();
+
+        await _store.SaveAsync(snapshot, cancellationToken);
+    }
+
     private async Task PersistAfterDelayAsync(CancellationToken cancellationToken)
     {
         try

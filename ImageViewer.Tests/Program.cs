@@ -160,6 +160,10 @@ static async Task TestPersistenceRoundtripAsync()
         {
             MoveDirectory = @"C:\sorted",
         },
+        Capture = new CaptureSettings
+        {
+            Hotkey = new HotkeyBinding { Ctrl = true, Shift = true, Key = "S" },
+        },
     };
 
     await store.SaveAsync(initial, CancellationToken.None);
@@ -172,6 +176,9 @@ static async Task TestPersistenceRoundtripAsync()
     AssertEqual(true, loaded.Caps.SaveCapsEnabled, "Caps save persisted");
     AssertEqual(CapsOutputFormat.WebP, loaded.Caps.OutputFormat, "Caps output format persisted");
     AssertEqual(@"C:\sorted", loaded.Organizer.MoveDirectory ?? "", "Move directory persisted");
+    AssertEqual(true, loaded.Capture.Hotkey.Ctrl, "Capture hotkey ctrl persisted");
+    AssertEqual(true, loaded.Capture.Hotkey.Shift, "Capture hotkey shift persisted");
+    AssertEqual("S", loaded.Capture.Hotkey.Key ?? "", "Capture hotkey key persisted");
 
     Directory.Delete(tempRoot, recursive: true);
 }

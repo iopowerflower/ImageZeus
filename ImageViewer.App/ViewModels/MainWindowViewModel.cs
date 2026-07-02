@@ -23,11 +23,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private ViewerSettings _settings = new();
     private IReadOnlyList<ImageEntry> _images = Array.Empty<ImageEntry>();
-    private ImageCacheLease? _currentLease;
+    private IImageLease? _currentLease;
     private CancellationTokenSource _loadCts = new();
     private CancellationTokenSource _animationLoadCts = new();
     private int _loadGeneration;
     private readonly object _loadGate = new();
+
+    private bool _isDynamicImage;
+    private string _dynamicTitle = string.Empty;
     private (string Path, int Generation)? _pendingLoadTarget;
     private bool _loadWorkerRunning;
 
@@ -68,9 +71,13 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     public event PropertyChangedEventHandler? PropertyChanged;
 
     public string WindowTitle =>
-        CurrentEntry is null
-            ? "ImageZeus"
-            : $"ImageZeus - {CurrentEntry.Name} ({CurrentIndex + 1}/{Math.Max(1, _images.Count)})";
+        IsDynamicImage
+            ? $"ImageZeus - {_dynamicTitle}"
+            : CurrentEntry is null
+                ? "ImageZeus"
+                : $"ImageZeus - {CurrentEntry.Name} ({CurrentIndex + 1}/{Math.Max(1, _images.Count)})";
+
+    public bool IsDynamicImage => _isDynamicImage;
 
     public WriteableBitmap? CurrentImage
     {
@@ -168,9 +175,14 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         get
         {
+            if (IsDynamicImage)
+            {
+                var dims = _currentLease?.Image is { } img ? $"{img.Width}×{img.Height}" : "";
+                return $"{_dynamicTitle} | {dims}";
+            }
             if (CurrentEntry is null) return string.Empty;
-            var dims = _currentLease?.Image is { } img ? $"{img.Width}×{img.Height} | " : "";
-            return $"{CurrentEntry.Name} | {dims}{CurrentEntry.DateModified:yyyy-MM-dd HH:mm} | {CurrentEntry.SizeBytes / 1024.0:F1} KB";
+            var dims2 = _currentLease?.Image is { } img2 ? $"{img2.Width}×{img2.Height} | " : "";
+            return $"{CurrentEntry.Name} | {dims2}{CurrentEntry.DateModified:yyyy-MM-dd HH:mm} | {CurrentEntry.SizeBytes / 1024.0:F1} KB";
         }
     }
 
@@ -250,6 +262,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
             _settings = await settingsTask;
             _settings.Organizer ??= new OrganizerSettings();
+            _settings.Capture ??= new CaptureSettings();
+            _settings.Capture.Hotkey ??= HotkeyBinding.DefaultCapture;
             _settingsLoaded = true;
             IsSidePanelOpen = _settings.IsSidePanelOpen;
 
@@ -293,7 +307,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
             StartDirectoryRefreshTimer();
 
-            if (OpenStopwatch is { } sw)
+            if (_services.LoggingEnabled && OpenStopwatch is { } sw)
             {
                 sw.Stop();
                 try
@@ -303,6 +317,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
                         $"[{DateTime.Now:HH:mm:ss.fff}] OPEN {sw.ElapsedMilliseconds}ms {name}\n");
                 }
                 catch { /* best effort */ }
+                OpenStopwatch = null;
+            }
+            else
+            {
                 OpenStopwatch = null;
             }
         }
@@ -342,7 +360,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task<string?> NavigateAsync(int delta)
     {
-        if (_images.Count == 0)
+        if (IsDynamicImage || _images.Count == 0)
             return null;
 
         string? wrapMessage = null;
@@ -370,7 +388,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task SetIndexAsync(int index)
     {
-        if (index < 0 || index >= _images.Count || index == _currentIndex)
+        if (IsDynamicImage || index < 0 || index >= _images.Count || index == _currentIndex)
             return;
 
         _currentIndex = index;
@@ -1181,6 +1199,35 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _settingsWriter.Dispose();
     }
 
+    public void LoadDynamicImage(InMemoryImageSource source)
+    {
+        _isDynamicImage = true;
+        _dynamicTitle = source.Title;
+
+        _images = Array.Empty<ImageEntry>();
+        _currentIndex = -1;
+        _currentFolder = null;
+        StopAnimation();
+        _dirRefreshTimer?.Stop();
+        _dirRefreshTimer = null;
+        CurrentRating = 0;
+
+        var frame = source.ToFrame(TimeSpan.FromMilliseconds(100));
+        var image = new DecodedImage(source.Title, new[] { frame }, 1);
+        var lease = new DynamicImageCacheLease(image);
+        SetCurrentLease(lease);
+        ClearTransformState();
+
+        CurrentImage = PixelFrameAvaloniaBlitter.CreateWriteableBitmap(frame);
+        IsAnimated = false;
+        AnimFrameIndex = 0;
+        OnPropertyChanged(nameof(AnimFrameCount));
+        CurrentImageLoadVersion++;
+        OnPropertyChanged(nameof(CurrentImageLoadVersion));
+        OnPropertyChanged(nameof(IsDynamicImage));
+        RaiseNavigationProperties();
+    }
+
     public async Task LoadFolderAndSelectAsync(string selectedPath)
     {
         var raw = await _services.RatingService.GetAllRatingsAsync(CancellationToken.None);
@@ -1400,7 +1447,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         _loadCoordinator.PreloadNeighbors(preload, navGeneration);
     }
 
-    private void SetCurrentLease(ImageCacheLease? lease)
+    private void SetCurrentLease(IImageLease? lease)
     {
         _currentLease?.Dispose();
         _currentLease = lease;
@@ -1410,6 +1457,12 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     {
         if (!_settingsLoaded) return;
         _settingsWriter.ScheduleSave(_settings);
+    }
+
+    public async Task PersistSettingsImmediatelyAsync()
+    {
+        if (!_settingsLoaded) return;
+        await _settingsWriter.SaveImmediatelyAsync(_settings, CancellationToken.None);
     }
 
     private void RaiseNavigationProperties()

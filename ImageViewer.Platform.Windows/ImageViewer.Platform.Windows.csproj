@@ -2,6 +2,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ImageViewer.Core\ImageViewer.Core.csproj" />
+    <ProjectReference Include="..\ImageViewer.Imaging\ImageViewer.Imaging.csproj" />
   </ItemGroup>
 
   <PropertyGroup>

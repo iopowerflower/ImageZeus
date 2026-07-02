@@ -1,9 +1,75 @@
 using System.Runtime.InteropServices;
+using ImageViewer.Imaging.Models;
 
 namespace ImageViewer.Platform.Windows;
 
 public static class WindowsClipboardHelper
 {
+    public static InMemoryImageSource? TryReadBitmapFromClipboard()
+    {
+        if (!OpenClipboard(IntPtr.Zero)) return null;
+
+        try
+        {
+            var h = GetClipboardData(CF_DIB);
+            if (h == IntPtr.Zero) return null;
+
+            var ptr = GlobalLock(h);
+            if (ptr == IntPtr.Zero) return null;
+
+            try
+            {
+                unsafe
+                {
+                    var src = (byte*)ptr;
+
+                    var biSize = ReadInt32(src, 0);
+                    var width = ReadInt32(src, 4);
+                    var height = ReadInt32(src, 8);
+                    var bitCount = ReadInt16(src, 14);
+                    var compression = ReadInt32(src, 16);
+
+                    if (bitCount != 32 || compression != 0) return null;
+                    if (width <= 0 || height == 0) return null;
+
+                    var bottomUp = height > 0;
+                    var absHeight = Math.Abs(height);
+                    var stride = width * 4;
+                    var pixels = new byte[stride * absHeight];
+
+                    if (bottomUp)
+                    {
+                        for (var y = 0; y < absHeight; y++)
+                        {
+                            var srcRow = src + biSize + (absHeight - 1 - y) * stride;
+                            var dstRow = pixels.AsSpan(y * stride, stride);
+                            for (var i = 0; i < stride; i++) dstRow[i] = srcRow[i];
+                        }
+                    }
+                    else
+                    {
+                        var total = stride * absHeight;
+                        var srcSpan = new ReadOnlySpan<byte>(src + biSize, total);
+                        srcSpan.CopyTo(pixels);
+                    }
+
+                    return new InMemoryImageSource(pixels, width, absHeight, stride, "Clipboard Image");
+                }
+            }
+            finally
+            {
+                GlobalUnlock(h);
+            }
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
+    private static unsafe int ReadInt32(byte* src, int offset) => *(int*)(src + offset);
+    private static unsafe short ReadInt16(byte* src, int offset) => *(short*)(src + offset);
+
     public static bool CopyBitmapToClipboard(byte[] bgraPixels, int width, int height, int srcStride)
     {
         var dibStride = width * 4;
@@ -112,4 +178,7 @@ public static class WindowsClipboardHelper
 
     [DllImport("user32.dll", SetLastError = true)]
     private static extern IntPtr SetClipboardData(uint uFormat, IntPtr hMem);
+
+    [DllImport("user32.dll", SetLastError = true)]
+    private static extern IntPtr GetClipboardData(uint uFormat);
 }

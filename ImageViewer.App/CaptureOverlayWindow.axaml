@@ -1,0 +1,18 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="ImageViewer.App.CaptureOverlayWindow"
+        ShowInTaskbar="False"
+        SystemDecorations="None"
+        Topmost="True"
+        Background="Black"
+        CanResize="False"
+        KeyDown="OnOverlayKeyDown">
+  <Canvas Name="OverlayCanvas">
+    <Image Name="CaptureImage" Stretch="None"/>
+    <Border Name="SelectionBorder"
+            BorderBrush="#00FF00"
+            BorderThickness="2"
+            Background="#3300FF00"
+            IsVisible="False"/>
+  </Canvas>
+</Window>

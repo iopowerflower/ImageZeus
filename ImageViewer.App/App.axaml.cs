@@ -10,7 +10,9 @@ using ImageViewer.App.Services;
 using ImageViewer.App.ViewModels;
 using ImageViewer.Core.Models;
 using ImageViewer.Core.Services;
+using ImageViewer.Imaging.Models;
 using ImageViewer.Persistence;
+using ImageViewer.Platform.Windows;
 
 namespace ImageViewer.App;
 
@@ -21,6 +23,7 @@ public partial class App : Application
     private CancellationTokenSource? _pipeCts;
     private Timer? _keepAliveTimer;
     private readonly List<(MainWindow Window, MainWindowViewModel ViewModel)> _viewers = new();
+    private GlobalHotkeyService? _hotkeyService;
 
     public required AppServices Services { get; init; }
     public bool IsDaemonStart { get; init; }
@@ -101,9 +104,47 @@ public partial class App : Application
 
             StartPipeServer();
             StartKeepAlive();
+            StartGlobalHotkeyAsync();
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    private void StartGlobalHotkeyAsync()
+    {
+        _hotkeyService = new GlobalHotkeyService
+        {
+            HotkeyPressed = () =>
+            {
+                Dispatcher.UIThread.Post(async () => await StartCaptureAsync());
+            },
+        };
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                var settings = await Services.SettingsStore.LoadAsync(CancellationToken.None);
+                var binding = settings.Capture?.Hotkey ?? HotkeyBinding.DefaultCapture;
+                _hotkeyService.Register(binding);
+            }
+            catch (Exception ex)
+            {
+                Services.CrashLogger.Log(ex, "Register global hotkey");
+            }
+        });
+    }
+
+    public void ReRegisterHotkey(HotkeyBinding binding)
+    {
+        try
+        {
+            _hotkeyService?.Register(binding);
+        }
+        catch (Exception ex)
+        {
+            Services.CrashLogger.Log(ex, "Re-register global hotkey");
+        }
     }
 
     public void OpenNewViewer(string? filePath)
@@ -125,6 +166,78 @@ public partial class App : Application
         viewModel.OpenStopwatch = System.Diagnostics.Stopwatch.StartNew();
         var window = new MainWindow { DataContext = viewModel };
 
+        ApplyWindowGeometry(window);
+
+        window.Closed += (_, _) =>
+        {
+            _viewers.RemoveAll(v => ReferenceEquals(v.Window, window));
+            viewModel.Dispose();
+        };
+
+        _viewers.Add((window, viewModel));
+        window.Show();
+        window.Activate();
+        window.Topmost = true;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            ForceForeground(window);
+            window.Topmost = false;
+        }, DispatcherPriority.Input);
+    }
+
+    public void OpenMemoryViewer(InMemoryImageSource source)
+    {
+        var childServices = Services.CreateChild(Array.Empty<string>());
+        var viewModel = new MainWindowViewModel(childServices);
+        var window = new MainWindow { DataContext = viewModel };
+
+        ApplyWindowGeometry(window);
+
+        window.Closed += (_, _) =>
+        {
+            _viewers.RemoveAll(v => ReferenceEquals(v.Window, window));
+            viewModel.Dispose();
+        };
+
+        _viewers.Add((window, viewModel));
+        window.Show();
+        window.Activate();
+        window.Topmost = true;
+
+        Dispatcher.UIThread.Post(() =>
+        {
+            viewModel.LoadDynamicImage(source);
+            ForceForeground(window);
+            window.Topmost = false;
+        }, DispatcherPriority.Input);
+    }
+
+    public async Task StartCaptureAsync()
+    {
+        var captureService = new ScreenCaptureService();
+        InMemoryImageSource? capture = null;
+
+        await Task.Run(() => capture = captureService.CaptureVirtualDesktop());
+
+        if (capture is null) return;
+
+        await Dispatcher.UIThread.InvokeAsync(async () =>
+        {
+            var overlay = new CaptureOverlayWindow(capture)
+            {
+                OnCaptureComplete = async result =>
+                {
+                    await Dispatcher.UIThread.InvokeAsync(() => OpenMemoryViewer(result));
+                },
+            };
+
+            await overlay.ShowAndCaptureAsync();
+        });
+    }
+
+    private void ApplyWindowGeometry(MainWindow window)
+    {
         var geo = LastWindowGeometry;
         if (geo is not null)
         {
@@ -143,23 +256,6 @@ public partial class App : Application
                 window.Position = new PixelPoint(geo.X, geo.Y);
             }
         }
-
-        window.Closed += (_, _) =>
-        {
-            _viewers.RemoveAll(v => ReferenceEquals(v.Window, window));
-            viewModel.Dispose();
-        };
-
-        _viewers.Add((window, viewModel));
-        window.Show();
-        window.Activate();
-        window.Topmost = true;
-
-        Dispatcher.UIThread.Post(() =>
-        {
-            ForceForeground(window);
-            window.Topmost = false;
-        }, DispatcherPriority.Input);
     }
 
     private static WindowGeometry? LoadWindowGeometryFromDisk()
@@ -217,6 +313,9 @@ public partial class App : Application
         _pipeCts?.Cancel();
         _keepAliveTimer?.Dispose();
         _keepAliveTimer = null;
+
+        _hotkeyService?.Dispose();
+        _hotkeyService = null;
 
         foreach (var (window, viewModel) in _viewers.ToArray())
         {

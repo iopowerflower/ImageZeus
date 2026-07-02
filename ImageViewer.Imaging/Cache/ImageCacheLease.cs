@@ -2,7 +2,7 @@ using ImageViewer.Imaging.Models;
 
 namespace ImageViewer.Imaging.Cache;
 
-public sealed class ImageCacheLease : IDisposable
+public sealed class ImageCacheLease : IImageLease
 {
     private readonly RefCountedImageCache _owner;
     private readonly RefCountedImageCache.CacheEntry _entry;

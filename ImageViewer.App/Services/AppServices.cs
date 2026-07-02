@@ -13,8 +13,11 @@ public sealed class AppServices
     public AppServices(string[] args)
     {
         Args = args;
+        LoggingEnabled = args.Any(IsLoggingEnabledArgument);
 
-        CrashLogger = new FileCrashLogger(AppPaths.GetCrashLogPath());
+        CrashLogger = LoggingEnabled
+            ? new FileCrashLogger(AppPaths.GetCrashLogPath())
+            : new NullCrashLogger();
         SettingsStore = new JsonSettingsStore(AppPaths.GetSettingsPath());
         ShellService = new WindowsShellService();
         RatingService = new JsonRatingService(AppPaths.GetRatingsPath());
@@ -29,6 +32,7 @@ public sealed class AppServices
     private AppServices(string[] args, AppServices parent)
     {
         Args = args;
+        LoggingEnabled = parent.LoggingEnabled;
         CrashLogger = parent.CrashLogger;
         SettingsStore = parent.SettingsStore;
         ShellService = parent.ShellService;
@@ -38,6 +42,13 @@ public sealed class AppServices
 
     public AppServices CreateChild(string[] args) => new(args, this);
 
+    private static bool IsLoggingEnabledArgument(string arg)
+    {
+        return arg.Equals("--enable-logging", StringComparison.OrdinalIgnoreCase)
+            || arg.Equals("--logging", StringComparison.OrdinalIgnoreCase)
+            || arg.Equals("--logs", StringComparison.OrdinalIgnoreCase);
+    }
+
     private static void WarmUpSkia()
     {
         try { _ = SkiaSharp.SKImageInfo.Empty; }
@@ -45,6 +56,8 @@ public sealed class AppServices
     }
 
     public string[] Args { get; }
+
+    public bool LoggingEnabled { get; }
 
     public ICrashLogger CrashLogger { get; }
 

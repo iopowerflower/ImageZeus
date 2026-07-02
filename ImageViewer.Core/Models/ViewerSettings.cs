@@ -12,6 +12,8 @@ public sealed class ViewerSettings
 
     public OrganizerSettings Organizer { get; set; } = new();
 
+    public CaptureSettings Capture { get; set; } = new();
+
     public int JpegFallbackQuality { get; set; } = 92;
 
     public WindowGeometry? Window { get; set; }
@@ -62,4 +64,32 @@ public sealed class CapsSettings
 public sealed class OrganizerSettings
 {
     public string? MoveDirectory { get; set; }
+}
+
+public sealed class CaptureSettings
+{
+    public HotkeyBinding Hotkey { get; set; } = HotkeyBinding.DefaultCapture;
+}
+
+public sealed class HotkeyBinding
+{
+    public bool Ctrl { get; set; }
+    public bool Alt { get; set; }
+    public bool Shift { get; set; }
+    public bool Win { get; set; }
+
+    public string Key { get; set; } = "W";
+
+    public static HotkeyBinding DefaultCapture => new()
+    {
+        Ctrl = true,
+        Key = "W",
+    };
+
+    public string Display => string.Concat(
+        Ctrl ? "Ctrl+" : "",
+        Alt ? "Alt+" : "",
+        Shift ? "Shift+" : "",
+        Win ? "Win+" : "",
+        string.IsNullOrEmpty(Key) ? "?" : Key);
 }
