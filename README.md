@@ -4,6 +4,8 @@ Fast, lightweight Windows image viewer built with C# and Avalonia.
 
 [![Release](https://github.com/iopowerflower/ImageZeus/actions/workflows/release.yml/badge.svg)](https://github.com/iopowerflower/ImageZeus/actions/workflows/release.yml)
 
+![ImageZeus main interface](https://raw.githubusercontent.com/iopowerflower/ImageZeus/refs/heads/main/capture_cap_125004839_0.jpg)
+
 ## Download
 
 Grab the latest `ImageZeusSetup.exe` from the [Releases](https://github.com/iopowerflower/ImageZeus/releases) page.
