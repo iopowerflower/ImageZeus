@@ -44,9 +44,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
     private double _offsetY;
     private bool _disposed;
 
-    private int _rotateDegrees;
-    private bool _flipH;
-    private bool _flipV;
     private bool _isDirty;
 
     private DispatcherTimer? _animTimer;
@@ -57,6 +54,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private DispatcherTimer? _dirRefreshTimer;
     private string? _currentFolder;
+    private int _directoryRefreshInProgress;
     private bool _settingsLoaded;
 
     internal System.Diagnostics.Stopwatch? OpenStopwatch { get; set; }
@@ -602,10 +600,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         if (frameIndex < 0 || frameIndex >= frames.Count) return;
 
         var frame = frames[frameIndex];
-        if (_isDirty)
-        {
-            frame = ApplyTransform(frame);
-        }
 
         if (_currentImage is not null &&
             _currentImage.PixelSize.Width == frame.Width &&
@@ -622,83 +616,124 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public bool IsDirty => _isDirty;
 
+    public bool CanUseFileOperations => !IsDynamicImage && !IsDirty && CurrentEntry is not null;
+
     public void RotateCw()
     {
-        _rotateDegrees = (_rotateDegrees + 90) % 360;
-        _isDirty = true;
-        RebuildTransformedImage();
+        ApplyPixelEdit(frame =>
+        {
+            var result = Rotate90Pixels(frame.Pixels, frame.Width, frame.Height, frame.Stride);
+            return new DecodedFrame(result.newW, result.newH, result.newW * 4, result.pixels, frame.Duration);
+        });
     }
 
     public void RotateCcw()
     {
-        _rotateDegrees = (_rotateDegrees + 270) % 360;
-        _isDirty = true;
-        RebuildTransformedImage();
+        ApplyPixelEdit(frame =>
+        {
+            var pixels = frame.Pixels;
+            var w = frame.Width;
+            var h = frame.Height;
+            var stride = frame.Stride;
+            for (var i = 0; i < 3; i++)
+            {
+                var result = Rotate90Pixels(pixels, w, h, stride);
+                pixels = result.pixels;
+                w = result.newW;
+                h = result.newH;
+                stride = w * 4;
+            }
+            return new DecodedFrame(w, h, stride, pixels, frame.Duration);
+        });
     }
 
     public void FlipHorizontal()
     {
-        _flipH = !_flipH;
-        _isDirty = true;
-        RebuildTransformedImage();
+        ApplyPixelEdit(frame =>
+        {
+            var pixels = FlipHorizontalPixels(frame.Pixels, frame.Width, frame.Height, frame.Stride);
+            return new DecodedFrame(frame.Width, frame.Height, frame.Width * 4, pixels, frame.Duration);
+        });
     }
 
     public void FlipVertical()
     {
-        _flipV = !_flipV;
-        _isDirty = true;
-        RebuildTransformedImage();
+        ApplyPixelEdit(frame =>
+        {
+            var pixels = FlipVerticalPixels(frame.Pixels, frame.Width, frame.Height, frame.Stride);
+            return new DecodedFrame(frame.Width, frame.Height, frame.Width * 4, pixels, frame.Duration);
+        });
+    }
+
+    public void ApplyCrop(int x, int y, int width, int height)
+    {
+        var data = GetCurrentPixelData();
+        if (data is null) return;
+
+        var (pixels, imgW, imgH, stride) = data.Value;
+        var left = Math.Clamp(x, 0, imgW);
+        var top = Math.Clamp(y, 0, imgH);
+        var right = Math.Clamp(x + width, 0, imgW);
+        var bottom = Math.Clamp(y + height, 0, imgH);
+        var cropW = right - left;
+        var cropH = bottom - top;
+        if (cropW <= 0 || cropH <= 0) return;
+
+        var dstStride = cropW * 4;
+        var cropped = new byte[dstStride * cropH];
+        for (var row = 0; row < cropH; row++)
+            Buffer.BlockCopy(pixels, (top + row) * stride + left * 4, cropped, row * dstStride, dstStride);
+
+        CommitEditedFrame(new DecodedFrame(cropW, cropH, dstStride, cropped, TimeSpan.FromMilliseconds(100)));
+    }
+
+    private void ApplyPixelEdit(Func<DecodedFrame, DecodedFrame> edit)
+    {
+        var data = GetCurrentPixelData();
+        if (data is null) return;
+
+        var (pixels, w, h, stride) = data.Value;
+        var source = new DecodedFrame(w, h, stride, pixels, TimeSpan.FromMilliseconds(100));
+        CommitEditedFrame(edit(source));
+    }
+
+    private void CommitEditedFrame(DecodedFrame frame)
+    {
+        StopAnimation();
+
+        var key = CurrentEntry?.FullPath ?? _currentLease?.Image.Key ?? "edited";
+        SetCurrentLease(new DynamicImageCacheLease(new DecodedImage(key, new[] { frame }, 1)));
+        SetDirty(true);
+
+        CurrentImage = PixelFrameAvaloniaBlitter.CreateWriteableBitmap(frame);
+        IsAnimated = false;
+        AnimFrameIndex = 0;
+        OnPropertyChanged(nameof(AnimFrameCount));
+        CurrentImageLoadVersion++;
+        OnPropertyChanged(nameof(CurrentImageLoadVersion));
+        OnPropertyChanged(nameof(ExifText));
+    }
+
+    private void SetDirty(bool dirty)
+    {
+        if (_isDirty == dirty) return;
+        _isDirty = dirty;
+        OnPropertyChanged(nameof(IsDirty));
+        OnPropertyChanged(nameof(CanUseFileOperations));
     }
 
     private void ClearTransformState()
     {
-        _rotateDegrees = 0;
-        _flipH = false;
-        _flipV = false;
-        _isDirty = false;
+        SetDirty(false);
     }
 
-    private void RebuildTransformedImage()
+    public (byte[] pixels, int width, int height, int stride)? GetCurrentPixelData()
     {
         if (_currentLease?.Image is null || _currentLease.Image.Frames.Count == 0)
-            return;
+            return null;
 
-        var srcFrame = _currentLease.Image.Frames[0];
-        var transformed = ApplyTransform(srcFrame);
-        var bitmap = PixelFrameAvaloniaBlitter.CreateWriteableBitmap(transformed);
-        CurrentImage = bitmap;
-    }
-
-    private DecodedFrame ApplyTransform(DecodedFrame src)
-    {
-        var w = src.Width;
-        var h = src.Height;
-        var pixels = src.Pixels;
-        var stride = src.Stride;
-
-        if (_flipH)
-        {
-            pixels = FlipHorizontalPixels(pixels, w, h, stride);
-            stride = w * 4;
-        }
-
-        if (_flipV)
-        {
-            pixels = FlipVerticalPixels(pixels, w, h, stride);
-            stride = w * 4;
-        }
-
-        for (var r = 0; r < _rotateDegrees; r += 90)
-        {
-            var result = Rotate90Pixels(pixels, w, h, stride);
-            pixels = result.pixels;
-            var oldW = w;
-            w = h;
-            h = oldW;
-            stride = w * 4;
-        }
-
-        return new DecodedFrame(w, h, stride, pixels, src.Duration);
+        var frame = _currentLease.Image.Frames[0];
+        return (frame.Pixels, frame.Width, frame.Height, frame.Stride);
     }
 
     private static byte[] FlipHorizontalPixels(byte[] src, int w, int h, int stride)
@@ -756,21 +791,6 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         return (dst, newW, newH);
     }
 
-    public (byte[] pixels, int width, int height, int stride)? GetCurrentPixelData()
-    {
-        if (_currentLease?.Image is null || _currentLease.Image.Frames.Count == 0)
-            return null;
-
-        var frame = _currentLease.Image.Frames[0];
-        if (_isDirty)
-        {
-            var transformed = ApplyTransform(frame);
-            return (transformed.Pixels, transformed.Width, transformed.Height, transformed.Stride);
-        }
-
-        return (frame.Pixels, frame.Width, frame.Height, frame.Stride);
-    }
-
     public async Task ShowInExplorerAsync()
     {
         var path = CurrentEntry?.FullPath;
@@ -818,6 +838,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task DeleteAsync(int direction = 1)
     {
+        if (!CanUseFileOperations) return;
+
         var path = CurrentEntry?.FullPath;
         if (path is null) return;
 
@@ -854,6 +876,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task<string?> MoveCurrentAsync(int direction, string? destinationDirectory)
     {
+        if (!CanUseFileOperations) return null;
+
         var entry = CurrentEntry;
         if (entry is null) return null;
 
@@ -931,6 +955,8 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     public async Task<string?> CopyCurrentAsync(int direction, string? destinationDirectory)
     {
+        if (!CanUseFileOperations) return null;
+
         var entry = CurrentEntry;
         if (entry is null) return null;
 
@@ -1130,23 +1156,33 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
 
     private async Task RefreshDirectoryAsync()
     {
-        if (_disposed || _currentFolder is null || !Directory.Exists(_currentFolder)) return;
+        if (_disposed || _currentFolder is null) return;
+        if (Interlocked.Exchange(ref _directoryRefreshInProgress, 1) == 1) return;
 
         try
         {
-            var currentFiles = new HashSet<string>(
-                Directory.EnumerateFiles(_currentFolder)
-                    .Where(SupportedFormats.IsSupported)
-                    .Select(Path.GetFullPath),
-                StringComparer.OrdinalIgnoreCase);
+            var folder = _currentFolder;
+            var selectedPath = CurrentEntry?.FullPath;
+            var sortField = _settings.SortField;
+            var sortDirection = _settings.SortDirection;
 
             var knownFiles = new HashSet<string>(
                 _images.Select(e => e.FullPath),
                 StringComparer.OrdinalIgnoreCase);
 
-            if (currentFiles.SetEquals(knownFiles)) return;
+            var currentFiles = await Task.Run(() =>
+            {
+                if (!Directory.Exists(folder)) return null;
 
-            var selectedPath = CurrentEntry?.FullPath;
+                return new HashSet<string>(
+                    Directory.EnumerateFiles(folder)
+                        .Where(SupportedFormats.IsSupported)
+                        .Select(Path.GetFullPath),
+                    StringComparer.OrdinalIgnoreCase);
+            });
+
+            if (currentFiles is null) return;
+            if (currentFiles.SetEquals(knownFiles)) return;
 
             var raw = await _services.RatingService.GetAllRatingsAsync(CancellationToken.None);
             var ratings = raw.ToDictionary(
@@ -1155,8 +1191,16 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
             var firstFile = selectedPath ?? currentFiles.FirstOrDefault();
             if (firstFile is null) return;
 
-            _images = _indexBuilder.Build(firstFile, ratings);
-            _images = _imageSorter.Sort(_images, _settings.SortField, _settings.SortDirection);
+            var sortedImages = await Task.Run(() =>
+            {
+                var images = _indexBuilder.Build(firstFile, ratings);
+                return _imageSorter.Sort(images, sortField, sortDirection);
+            });
+
+            if (_disposed || !string.Equals(_currentFolder, folder, StringComparison.OrdinalIgnoreCase))
+                return;
+
+            _images = sortedImages;
 
             if (selectedPath is not null)
             {
@@ -1171,6 +1215,10 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         catch (Exception ex)
         {
             _services.CrashLogger.Log(ex, "Directory refresh");
+        }
+        finally
+        {
+            Interlocked.Exchange(ref _directoryRefreshInProgress, 0);
         }
     }
 
@@ -1225,6 +1273,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         CurrentImageLoadVersion++;
         OnPropertyChanged(nameof(CurrentImageLoadVersion));
         OnPropertyChanged(nameof(IsDynamicImage));
+        OnPropertyChanged(nameof(CanUseFileOperations));
         RaiseNavigationProperties();
     }
 
@@ -1474,6 +1523,7 @@ public sealed class MainWindowViewModel : INotifyPropertyChanged, IDisposable
         OnPropertyChanged(nameof(ExifText));
         OnPropertyChanged(nameof(SortField));
         OnPropertyChanged(nameof(SortDirection));
+        OnPropertyChanged(nameof(CanUseFileOperations));
     }
 
     private async Task RunSafeAsync(Func<Task> action, string context)

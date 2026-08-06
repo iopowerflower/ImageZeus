@@ -14,20 +14,21 @@
 
   <DockPanel>
     <!-- Left Side Panel -->
-    <Border Classes="sidePanel"
+    <Border Name="SidePanel"
+            Classes="sidePanel"
             DockPanel.Dock="Left"
             Width="210"
             IsVisible="{Binding IsSidePanelOpen}"
             Background="#161B22"
             BorderBrush="#21262D"
             BorderThickness="0,0,1,0"
-            Padding="12,14">
-      <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <StackPanel Spacing="6" Margin="0,0,6,0">
+            Padding="10,10">
+      <ScrollViewer VerticalScrollBarVisibility="Auto" Background="Transparent">
+        <StackPanel Spacing="3" Margin="0,0,4,0" Background="Transparent">
 
           <!-- Rating -->
           <TextBlock Classes="sectionHeader" Text="RATING" />
-          <StackPanel Name="RatingStars" Orientation="Horizontal" Spacing="2" Margin="0,0,0,4">
+          <StackPanel Name="RatingStars" Orientation="Horizontal" Spacing="2" Margin="0,0,0,2">
             <Button Name="Star1" Content="&#9733;" Classes="starBtn" Click="OnStarClick" Tag="1" />
             <Button Name="Star2" Content="&#9733;" Classes="starBtn" Click="OnStarClick" Tag="2" />
             <Button Name="Star3" Content="&#9733;" Classes="starBtn" Click="OnStarClick" Tag="3" />
@@ -36,24 +37,26 @@
           </StackPanel>
 
           <!-- Divider -->
-          <Border Height="1" Background="#21262D" Margin="0,4" />
+          <Border Height="1" Background="#21262D" Margin="0,2" />
 
           <!-- Edit Tools Section -->
           <TextBlock Classes="sectionHeader" Text="EDIT TOOLS" />
-          <StackPanel Spacing="4">
+          <StackPanel Spacing="2">
             <Button Content="Rotate CW" Click="OnRotateCwClick" HorizontalAlignment="Stretch" />
             <Button Content="Rotate CCW" Click="OnRotateCcwClick" HorizontalAlignment="Stretch" />
             <Button Content="Flip Horizontal" Click="OnFlipHorizontalClick" HorizontalAlignment="Stretch" />
             <Button Content="Flip Vertical" Click="OnFlipVerticalClick" HorizontalAlignment="Stretch" />
+            <Button Name="CropButton" Content="Start Crop" Classes="cropBtn"
+                    Click="OnCropClick" HorizontalAlignment="Stretch" />
           </StackPanel>
 
-          <StackPanel Orientation="Horizontal" Spacing="6" Margin="0,4,0,0">
+          <StackPanel Orientation="Horizontal" Spacing="4" Margin="0,2,0,0">
             <Button Classes="saveBtn" Content="Save" Click="OnSaveClick" HorizontalAlignment="Stretch" />
             <Button Classes="saveBtn" Content="Save As..." Click="OnSaveAsClick" HorizontalAlignment="Stretch" />
           </StackPanel>
 
           <!-- Divider -->
-          <Border Height="1" Background="#21262D" Margin="0,8" />
+          <Border Height="1" Background="#21262D" Margin="0,4" />
 
           <!-- Caps Tool Section -->
           <TextBlock Classes="capsHeader" Text="CAPS TOOL" />
@@ -90,7 +93,7 @@
           </StackPanel>
 
           <!-- Output format -->
-          <TextBlock Classes="label" Text="Output Format" Margin="0,4,0,2" />
+          <TextBlock Classes="label" Text="Output Format" Margin="0,2,0,1" />
           <ComboBox Name="CapsFormatCombo" SelectedIndex="0" HorizontalAlignment="Stretch">
             <ComboBoxItem Content="Same as Source" />
             <ComboBoxItem Content="PNG" />
@@ -101,8 +104,8 @@
           <!-- Save Caps -->
           <CheckBox Name="CapsSaveCheckbox" Content="Save Caps"
                     Checked="OnCapsOptionChanged" Unchecked="OnCapsOptionChanged" />
-          <StackPanel Name="CapsSavePanel" Spacing="4" IsVisible="False" Margin="16,0,0,0">
-            <TextBox Name="CapsSaveDir" Watermark="Destination folder..." IsReadOnly="True" />
+          <StackPanel Name="CapsSavePanel" Spacing="2" IsVisible="False">
+            <TextBox Name="CapsSaveDir" Watermark="Destination folder..." />
             <Button Content="Browse..." Click="OnCapsBrowseClick" HorizontalAlignment="Stretch" />
           </StackPanel>
 
@@ -114,41 +117,41 @@
           <CheckBox Name="CapsAutoCapCheckbox" Content="Auto Cap" />
 
           <Button Classes="captureBtn" Content="Capture  [C]" Click="OnCapsCapture"
-                  HorizontalAlignment="Stretch" Margin="0,4,0,0" />
+                  HorizontalAlignment="Stretch" Margin="0,2,0,0" />
 
           <!-- Move -->
-          <Border Height="1" Background="#21262D" Margin="0,8" />
+          <Border Height="1" Background="#21262D" Margin="0,4" />
           <TextBlock Classes="sectionHeader" Text="MOVE TO FOLDER" />
-          <StackPanel Spacing="4">
-            <TextBox Name="MoveDir" Watermark="Destination folder..." IsReadOnly="True" />
+          <StackPanel Spacing="2">
+            <TextBox Name="MoveDir" Watermark="Destination folder..." />
             <Button Content="Browse..." Click="OnMoveBrowseClick" HorizontalAlignment="Stretch" />
             <Grid ColumnDefinitions="*,*" HorizontalAlignment="Stretch">
               <Button Grid.Column="0" Classes="moveBtn moveBtnLeft"
                       Click="OnMovePrevClick" HorizontalContentAlignment="Right"
-                      Content="◀ Move" />
+                      Content="◀ Move" IsEnabled="{Binding CanUseFileOperations}" />
               <Button Grid.Column="1" Classes="moveBtn moveBtnRight"
                       Click="OnMoveNextClick" HorizontalContentAlignment="Left"
-                      Content="Move ▶" />
+                      Content="Move ▶" IsEnabled="{Binding CanUseFileOperations}" />
             </Grid>
             <Grid ColumnDefinitions="*,*" HorizontalAlignment="Stretch">
               <Button Grid.Column="0" Classes="copyBtn copyBtnLeft"
                       Click="OnCopyPrevClick" HorizontalContentAlignment="Right"
-                      Content="◀ Copy" />
+                      Content="◀ Copy" IsEnabled="{Binding CanUseFileOperations}" />
               <Button Grid.Column="1" Classes="copyBtn copyBtnRight"
                       Click="OnCopyNextClick" HorizontalContentAlignment="Left"
-                      Content="Copy ▶" />
+                      Content="Copy ▶" IsEnabled="{Binding CanUseFileOperations}" />
             </Grid>
           </StackPanel>
 
           <!-- Delete -->
-          <Border Height="1" Background="#21262D" Margin="0,8" />
+          <Border Height="1" Background="#21262D" Margin="0,4" />
           <Grid ColumnDefinitions="*,*" HorizontalAlignment="Stretch">
             <Button Grid.Column="0" Classes="deleteBtn deleteBtnLeft"
                     Click="OnDeletePrevClick" HorizontalContentAlignment="Right"
-                    Content="◀ Del" />
+                    Content="◀ Del" IsEnabled="{Binding CanUseFileOperations}" />
             <Button Grid.Column="1" Classes="deleteBtn deleteBtnRight"
                     Click="OnDeleteNextClick" HorizontalContentAlignment="Left"
-                    Content="Del ▶" />
+                    Content="Del ▶" IsEnabled="{Binding CanUseFileOperations}" />
           </Grid>
         </StackPanel>
       </ScrollViewer>
@@ -195,11 +198,16 @@
         </Canvas>
       </Border>
 
-      <!-- Caps selection overlay -->
+      <!-- Caps / crop selection overlay -->
       <Canvas Name="CapsOverlayCanvas" IsVisible="False" IsHitTestVisible="False">
         <Border Name="CapsBorder"
                 BorderBrush="#00FF00"
                 BorderThickness="1"
+                IsVisible="False" />
+        <Border Name="CropBorder"
+                BorderBrush="#F0A020"
+                BorderThickness="1"
+                Background="#28F0A020"
                 IsVisible="False" />
       </Canvas>
 

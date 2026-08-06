@@ -4,11 +4,13 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Controls.Primitives;
 using Avalonia.Input;
+using Avalonia.Input.Platform;
 using Avalonia.Interactivity;
 using Avalonia.Media;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
+using Avalonia.VisualTree;
 using ImageViewer.App.ViewModels;
 using ImageViewer.Core.Caps;
 using ImageViewer.Core.Models;
@@ -51,6 +53,15 @@ public partial class MainWindow : Window
     private Point _capsEnd;
     private int _capsSequence;
 
+    private bool _cropActive;
+    private bool _cropDrawing;
+    private Point _cropStart;
+    private Point _cropEnd;
+
+    private readonly Dictionary<TextBox, CancellationTokenSource> _pathErrorCts = new();
+    private string _committedCapsSaveDir = string.Empty;
+    private string _committedMoveDir = string.Empty;
+
     public MainWindow()
     {
         InitializeComponent();
@@ -88,6 +99,11 @@ public partial class MainWindow : Window
         CapsFixedW.LostFocus += (_, _) => SaveCapsSettings();
         CapsFixedH.LostFocus += (_, _) => SaveCapsSettings();
         CapsResizeValue.LostFocus += (_, _) => SaveCapsSettings();
+
+        WirePathTextBox(CapsSaveDir, isCapsSave: true);
+        WirePathTextBox(MoveDir, isCapsSave: false);
+
+        AddHandler(PointerPressedEvent, OnBackgroundPointerPressed, RoutingStrategies.Tunnel);
 
         PositionChanged += (_, _) => PersistWindowGeometry();
         this.PropertyChanged += (_, args) =>
@@ -143,6 +159,13 @@ public partial class MainWindow : Window
         _scrubBarFadeCts?.Cancel();
         _scrubBarFadeCts?.Dispose();
         _scrubBarFadeCts = null;
+
+        foreach (var cts in _pathErrorCts.Values)
+        {
+            cts.Cancel();
+            cts.Dispose();
+        }
+        _pathErrorCts.Clear();
     }
 
     private void HandleClipboardPaste()
@@ -261,6 +284,8 @@ public partial class MainWindow : Window
 
         if (e.PropertyName is nameof(MainWindowViewModel.CurrentImageLoadVersion))
         {
+            ExitCropMode();
+
             var img = ViewModel?.CurrentImage;
             var newSize = img?.PixelSize ?? default;
 
@@ -470,6 +495,13 @@ public partial class MainWindow : Window
 
     private void OnViewerPointerMoved(object? sender, PointerEventArgs e)
     {
+        if (_cropActive && _cropDrawing)
+        {
+            _cropEnd = e.GetPosition(ViewerArea);
+            UpdateCropRect();
+            return;
+        }
+
         if (_capsActive && _capsDrawing)
         {
             _capsEnd = e.GetPosition(ViewerArea);
@@ -527,6 +559,19 @@ public partial class MainWindow : Window
 
         if (props.IsLeftButtonPressed)
         {
+            if (_cropActive)
+            {
+                _cropDrawing = true;
+                _cropStart = e.GetPosition(ViewerArea);
+                _cropEnd = _cropStart;
+                CapsOverlayCanvas.IsVisible = true;
+                CropBorder.IsVisible = true;
+                CapsBorder.IsVisible = false;
+                UpdateCropRect();
+                e.Pointer.Capture(ViewerArea);
+                return;
+            }
+
             if (_capsActive)
             {
                 _capsDrawing = true;
@@ -547,6 +592,14 @@ public partial class MainWindow : Window
 
     private void OnViewerPointerReleased(object? sender, PointerReleasedEventArgs e)
     {
+        if (_cropDrawing)
+        {
+            _cropDrawing = false;
+            e.Pointer.Capture(null);
+            ApplyCropSelection();
+            return;
+        }
+
         if (_capsDrawing)
         {
             _capsDrawing = false;
@@ -744,26 +797,61 @@ public partial class MainWindow : Window
 
     private void OnRotateCwClick(object? sender, RoutedEventArgs e)
     {
+        ExitCropMode();
         ViewModel?.RotateCw();
         RefitImage();
     }
 
     private void OnRotateCcwClick(object? sender, RoutedEventArgs e)
     {
+        ExitCropMode();
         ViewModel?.RotateCcw();
         RefitImage();
     }
 
     private void OnFlipHorizontalClick(object? sender, RoutedEventArgs e)
     {
+        ExitCropMode();
         ViewModel?.FlipHorizontal();
         PositionImage();
     }
 
     private void OnFlipVerticalClick(object? sender, RoutedEventArgs e)
     {
+        ExitCropMode();
         ViewModel?.FlipVertical();
         PositionImage();
+    }
+
+    private void OnCropClick(object? sender, RoutedEventArgs e)
+    {
+        if (_cropActive)
+        {
+            ExitCropMode();
+            return;
+        }
+
+        if (ViewModel?.CurrentImage is null) return;
+
+        _cropActive = true;
+        CropButton.Content = "Make Selection";
+        CropButton.Classes.Add("active");
+        CapsOverlayCanvas.IsVisible = true;
+        CapsOverlayCanvas.IsHitTestVisible = false;
+        CapsBorder.IsVisible = false;
+        CropBorder.IsVisible = false;
+    }
+
+    private void ExitCropMode()
+    {
+        _cropActive = false;
+        _cropDrawing = false;
+        CropButton.Content = "Start Crop";
+        CropButton.Classes.Remove("active");
+        CropBorder.IsVisible = false;
+
+        if (!_capsActive)
+            CapsOverlayCanvas.IsVisible = false;
     }
 
     private async void OnSaveClick(object? sender, RoutedEventArgs e)
@@ -928,6 +1016,7 @@ public partial class MainWindow : Window
 
         CapsSaveCheckbox.IsChecked = caps.SaveCapsEnabled;
         CapsSaveDir.Text = caps.SaveCapsDirectory ?? string.Empty;
+        _committedCapsSaveDir = CapsSaveDir.Text;
 
         CapsClipboardCheckbox.IsChecked = caps.CopyToClipboard;
         CapsOriginalPixelsCheckbox.IsChecked = caps.OriginalPixels;
@@ -1018,6 +1107,8 @@ public partial class MainWindow : Window
             if (folders.Count > 0)
             {
                 CapsSaveDir.Text = folders[0].Path.LocalPath;
+                _committedCapsSaveDir = CapsSaveDir.Text;
+                ClearPathError(CapsSaveDir);
                 SaveCapsSettings();
             }
         }, "Caps browse folder");
@@ -1027,6 +1118,7 @@ public partial class MainWindow : Window
     {
         if (ViewModel is null) return;
         MoveDir.Text = ViewModel.OrganizerSettings.MoveDirectory ?? string.Empty;
+        _committedMoveDir = MoveDir.Text;
     }
 
     private void SaveOrganizerSettings()
@@ -1034,6 +1126,242 @@ public partial class MainWindow : Window
         if (!_uiReady || ViewModel is null) return;
         ViewModel.OrganizerSettings.MoveDirectory = string.IsNullOrWhiteSpace(MoveDir.Text) ? null : MoveDir.Text;
         ViewModel.PersistOrganizerSettings();
+    }
+
+    private void WirePathTextBox(TextBox box, bool isCapsSave)
+    {
+        box.LostFocus += (_, _) => CommitPathTextBox(box, isCapsSave, flashOnInvalid: true);
+        box.AddHandler(KeyDownEvent, (_, e) => OnPathBoxKeyDown(box, isCapsSave, e), RoutingStrategies.Tunnel);
+    }
+
+    private void OnPathBoxKeyDown(TextBox box, bool isCapsSave, KeyEventArgs e)
+    {
+        if (e.Key == Key.Enter)
+        {
+            CommitPathTextBox(box, isCapsSave, flashOnInvalid: true);
+            e.Handled = true;
+            return;
+        }
+
+        var isPaste = (e.Key == Key.V && e.KeyModifiers.HasFlag(KeyModifiers.Control))
+                      || (e.Key == Key.Insert && e.KeyModifiers.HasFlag(KeyModifiers.Shift));
+        if (!isPaste)
+            return;
+
+        e.Handled = true;
+        _ = ApplyPathPasteAsync(box, isCapsSave);
+    }
+
+    private async Task ApplyPathPasteAsync(TextBox box, bool isCapsSave)
+    {
+        string? clipboardText = null;
+        try
+        {
+            if (Clipboard is not null)
+                clipboardText = await Clipboard.TryGetTextAsync();
+        }
+        catch
+        {
+            // ignore clipboard failures
+        }
+
+        if (string.IsNullOrWhiteSpace(clipboardText))
+            return;
+
+        if (TryNormalizeFolderPath(clipboardText, out var normalized) && normalized is not null)
+        {
+            box.Text = normalized;
+            if (isCapsSave)
+            {
+                _committedCapsSaveDir = normalized;
+                SaveCapsSettings();
+            }
+            else
+            {
+                _committedMoveDir = normalized;
+                SaveOrganizerSettings();
+            }
+
+            ClearPathError(box);
+            return;
+        }
+
+        box.Text = isCapsSave ? _committedCapsSaveDir : _committedMoveDir;
+        FlashPathError(box, holdMs: 700);
+        ClearKeyboardFocus();
+    }
+
+    private void OnBackgroundPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        if (IsFocusKeepingControl(e.Source))
+            return;
+
+        ClearKeyboardFocus();
+    }
+
+    private static bool IsFocusKeepingControl(object? source)
+    {
+        for (var visual = source as Visual; visual is not null; visual = visual.GetVisualParent())
+        {
+            if (visual is TextBox or Button or ToggleButton or CheckBox or ComboBox or Slider)
+                return true;
+        }
+
+        return false;
+    }
+
+    private void ClearKeyboardFocus()
+    {
+        TopLevel.GetTopLevel(this)?.FocusManager?.ClearFocus();
+    }
+
+    private void CommitPathTextBox(TextBox box, bool isCapsSave, bool flashOnInvalid = false)
+    {
+        if (!_uiReady) return;
+
+        var committed = isCapsSave ? _committedCapsSaveDir : _committedMoveDir;
+        var text = box.Text?.Trim() ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(text))
+        {
+            box.Text = string.Empty;
+            if (isCapsSave)
+            {
+                _committedCapsSaveDir = string.Empty;
+                SaveCapsSettings();
+            }
+            else
+            {
+                _committedMoveDir = string.Empty;
+                SaveOrganizerSettings();
+            }
+            ClearPathError(box);
+            return;
+        }
+
+        if (!TryNormalizeFolderPath(text, out var normalized) || normalized is null)
+        {
+            box.Text = committed;
+            if (flashOnInvalid)
+                FlashPathError(box, holdMs: 700);
+            return;
+        }
+
+        if (!string.Equals(box.Text, normalized, StringComparison.OrdinalIgnoreCase))
+            box.Text = normalized;
+
+        if (isCapsSave)
+        {
+            _committedCapsSaveDir = normalized;
+            SaveCapsSettings();
+        }
+        else
+        {
+            _committedMoveDir = normalized;
+            SaveOrganizerSettings();
+        }
+
+        ClearPathError(box);
+    }
+
+    private static bool TryNormalizeFolderPath(string input, out string? normalized)
+    {
+        normalized = null;
+        var trimmed = input.Trim().Trim('"');
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return false;
+
+        if (trimmed.IndexOfAny(Path.GetInvalidPathChars()) >= 0)
+            return false;
+
+        if (!Path.IsPathRooted(trimmed))
+            return false;
+
+        try
+        {
+            var full = Path.GetFullPath(trimmed);
+            if (full.Length >= 2 && full[^1] is '\\' or '/' && full[^2] != ':')
+                full = full.TrimEnd('\\', '/');
+
+            normalized = full;
+            return true;
+        }
+        catch
+        {
+            return false;
+        }
+    }
+
+    private bool TryEnsureDestinationFolder(string? path, TextBox box, out string? resolved)
+    {
+        resolved = null;
+        if (string.IsNullOrWhiteSpace(path) || !TryNormalizeFolderPath(path, out resolved) || resolved is null)
+        {
+            FlashPathError(box);
+            return false;
+        }
+
+        try
+        {
+            if (!Directory.Exists(resolved))
+                Directory.CreateDirectory(resolved);
+
+            if (!Directory.Exists(resolved))
+            {
+                FlashPathError(box);
+                return false;
+            }
+
+            return true;
+        }
+        catch
+        {
+            FlashPathError(box);
+            return false;
+        }
+    }
+
+    private void FlashPathError(TextBox box, int holdMs = 2000)
+    {
+        if (_pathErrorCts.TryGetValue(box, out var existing))
+        {
+            existing.Cancel();
+            existing.Dispose();
+        }
+
+        var cts = new CancellationTokenSource();
+        _pathErrorCts[box] = cts;
+        var token = cts.Token;
+
+        box.Classes.Add("pathError");
+
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await Task.Delay(holdMs, token);
+                await Dispatcher.UIThread.InvokeAsync(() =>
+                {
+                    if (token.IsCancellationRequested) return;
+                    box.Classes.Remove("pathError");
+                });
+            }
+            catch (OperationCanceledException)
+            {
+            }
+        }, token);
+    }
+
+    private void ClearPathError(TextBox box)
+    {
+        if (_pathErrorCts.TryGetValue(box, out var existing))
+        {
+            existing.Cancel();
+            existing.Dispose();
+            _pathErrorCts.Remove(box);
+        }
+
+        box.Classes.Remove("pathError");
     }
 
     private async void OnMoveBrowseClick(object? sender, RoutedEventArgs e)
@@ -1058,6 +1386,8 @@ public partial class MainWindow : Window
             if (folders.Count > 0)
             {
                 MoveDir.Text = folders[0].Path.LocalPath;
+                _committedMoveDir = MoveDir.Text;
+                ClearPathError(MoveDir);
                 SaveOrganizerSettings();
             }
         }, "Move browse folder");
@@ -1067,8 +1397,15 @@ public partial class MainWindow : Window
     {
         await RunLoggedAsync(async () =>
         {
-            var msg = await (ViewModel?.MoveCurrentAsync(-1, MoveDir.Text) ?? Task.FromResult<string?>(null));
+            if (!TryEnsureDestinationFolder(MoveDir.Text, MoveDir, out var dest) || dest is null)
+            {
+                ShowToast("Destination unavailable");
+                return;
+            }
+
+            var msg = await (ViewModel?.MoveCurrentAsync(-1, dest) ?? Task.FromResult<string?>(null));
             RefitImage();
+            if (msg == "Move failed") FlashPathError(MoveDir);
             if (msg is not null) ShowToast(msg);
         }, "Move go prev");
     }
@@ -1077,8 +1414,15 @@ public partial class MainWindow : Window
     {
         await RunLoggedAsync(async () =>
         {
-            var msg = await (ViewModel?.MoveCurrentAsync(1, MoveDir.Text) ?? Task.FromResult<string?>(null));
+            if (!TryEnsureDestinationFolder(MoveDir.Text, MoveDir, out var dest) || dest is null)
+            {
+                ShowToast("Destination unavailable");
+                return;
+            }
+
+            var msg = await (ViewModel?.MoveCurrentAsync(1, dest) ?? Task.FromResult<string?>(null));
             RefitImage();
+            if (msg == "Move failed") FlashPathError(MoveDir);
             if (msg is not null) ShowToast(msg);
         }, "Move go next");
     }
@@ -1087,8 +1431,15 @@ public partial class MainWindow : Window
     {
         await RunLoggedAsync(async () =>
         {
-            var msg = await (ViewModel?.CopyCurrentAsync(-1, MoveDir.Text) ?? Task.FromResult<string?>(null));
+            if (!TryEnsureDestinationFolder(MoveDir.Text, MoveDir, out var dest) || dest is null)
+            {
+                ShowToast("Destination unavailable");
+                return;
+            }
+
+            var msg = await (ViewModel?.CopyCurrentAsync(-1, dest) ?? Task.FromResult<string?>(null));
             RefitImage();
+            if (msg == "Copy failed") FlashPathError(MoveDir);
             if (msg is not null) ShowToast(msg);
         }, "Copy go prev");
     }
@@ -1097,8 +1448,15 @@ public partial class MainWindow : Window
     {
         await RunLoggedAsync(async () =>
         {
-            var msg = await (ViewModel?.CopyCurrentAsync(1, MoveDir.Text) ?? Task.FromResult<string?>(null));
+            if (!TryEnsureDestinationFolder(MoveDir.Text, MoveDir, out var dest) || dest is null)
+            {
+                ShowToast("Destination unavailable");
+                return;
+            }
+
+            var msg = await (ViewModel?.CopyCurrentAsync(1, dest) ?? Task.FromResult<string?>(null));
             RefitImage();
+            if (msg == "Copy failed") FlashPathError(MoveDir);
             if (msg is not null) ShowToast(msg);
         }, "Copy go next");
     }
@@ -1221,11 +1579,27 @@ public partial class MainWindow : Window
 
                 if (CapsSaveCheckbox.IsChecked == true)
                 {
-                    var saveDir = string.IsNullOrWhiteSpace(CapsSaveDir.Text)
-                        ? Path.GetDirectoryName(ViewModel.CurrentEntry?.FullPath) ?? Environment.GetFolderPath(Environment.SpecialFolder.Desktop)
-                        : CapsSaveDir.Text;
+                    string? saveDir;
+                    if (string.IsNullOrWhiteSpace(CapsSaveDir.Text))
+                    {
+                        saveDir = Path.GetDirectoryName(ViewModel.CurrentEntry?.FullPath)
+                            ?? Environment.GetFolderPath(Environment.SpecialFolder.Desktop);
+                        try
+                        {
+                            Directory.CreateDirectory(saveDir);
+                        }
+                        catch
+                        {
+                            ShowToast("Caps save folder unavailable");
+                            return;
+                        }
+                    }
+                    else if (!TryEnsureDestinationFolder(CapsSaveDir.Text, CapsSaveDir, out saveDir) || saveDir is null)
+                    {
+                        ShowToast("Caps save folder unavailable");
+                        return;
+                    }
 
-                    Directory.CreateDirectory(saveDir);
                     var fullPath = Path.Combine(saveDir, fileName);
 
                     var skFormat = format switch
@@ -1235,9 +1609,19 @@ public partial class MainWindow : Window
                         _ => SKEncodedImageFormat.Png,
                     };
 
-                    using var encoded = finalBitmap.Encode(skFormat, 92);
-                    await using var fileStream = File.Create(fullPath);
-                    encoded.SaveTo(fileStream);
+                    try
+                    {
+                        using var encoded = finalBitmap.Encode(skFormat, 92);
+                        await using var fileStream = File.Create(fullPath);
+                        encoded.SaveTo(fileStream);
+                    }
+                    catch
+                    {
+                        if (!string.IsNullOrWhiteSpace(CapsSaveDir.Text))
+                            FlashPathError(CapsSaveDir);
+                        ShowToast("Caps save folder unavailable");
+                        return;
+                    }
                 }
 
                 if (CapsClipboardCheckbox.IsChecked == true)
@@ -1360,6 +1744,73 @@ public partial class MainWindow : Window
         Canvas.SetTop(CapsBorder, y);
         CapsBorder.Width = Math.Max(1, w);
         CapsBorder.Height = Math.Max(1, h);
+    }
+
+    private void UpdateCropRect()
+    {
+        var w = Math.Abs(_cropEnd.X - _cropStart.X);
+        var h = Math.Abs(_cropEnd.Y - _cropStart.Y);
+        var x = _cropEnd.X >= _cropStart.X ? _cropStart.X : _cropStart.X - w;
+        var y = _cropEnd.Y >= _cropStart.Y ? _cropStart.Y : _cropStart.Y - h;
+
+        Canvas.SetLeft(CropBorder, x);
+        Canvas.SetTop(CropBorder, y);
+        CropBorder.Width = Math.Max(1, w);
+        CropBorder.Height = Math.Max(1, h);
+    }
+
+    private void ApplyCropSelection()
+    {
+        if (ViewModel is null || ViewModel.CurrentImage is null || ViewModel.Zoom <= 0)
+        {
+            ExitCropMode();
+            return;
+        }
+
+        var left = Canvas.GetLeft(CropBorder);
+        var top = Canvas.GetTop(CropBorder);
+        var w = CropBorder.Width;
+        var h = CropBorder.Height;
+        if (double.IsNaN(left) || double.IsNaN(top) || w <= 1 || h <= 1)
+        {
+            ExitCropMode();
+            return;
+        }
+
+        var imageLeft = Canvas.GetLeft(MainImage);
+        var imageTop = Canvas.GetTop(MainImage);
+        if (double.IsNaN(imageLeft) || double.IsNaN(imageTop))
+        {
+            ExitCropMode();
+            return;
+        }
+
+        var data = ViewModel.GetCurrentPixelData();
+        if (data is null)
+        {
+            ExitCropMode();
+            return;
+        }
+
+        var (_, imgW, imgH, _) = data.Value;
+        var sourceLeft = (left - imageLeft) / ViewModel.Zoom;
+        var sourceTop = (top - imageTop) / ViewModel.Zoom;
+        var sourceRight = (left + w - imageLeft) / ViewModel.Zoom;
+        var sourceBottom = (top + h - imageTop) / ViewModel.Zoom;
+
+        var cropX = Math.Clamp((int)Math.Floor(sourceLeft), 0, imgW);
+        var cropY = Math.Clamp((int)Math.Floor(sourceTop), 0, imgH);
+        var cropRight = Math.Clamp((int)Math.Ceiling(sourceRight), 0, imgW);
+        var cropBottom = Math.Clamp((int)Math.Ceiling(sourceBottom), 0, imgH);
+        var cropW = cropRight - cropX;
+        var cropH = cropBottom - cropY;
+
+        ExitCropMode();
+
+        if (cropW <= 0 || cropH <= 0)
+            return;
+
+        ViewModel.ApplyCrop(cropX, cropY, cropW, cropH);
     }
 
     #endregion

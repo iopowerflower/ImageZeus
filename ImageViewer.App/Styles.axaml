@@ -129,8 +129,8 @@
 
   <!-- ========== Side panel overrides ========== -->
   <Style Selector="Border.sidePanel Button">
-    <Setter Property="Padding" Value="10,6" />
-    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="CornerRadius" Value="5" />
     <Setter Property="FontSize" Value="12" />
     <Setter Property="Background" Value="#2A3240" />
     <Setter Property="Foreground" Value="#D0D8E0" />
@@ -164,8 +164,8 @@
 
   <!-- Capture button -->
   <Style Selector="Button.captureBtn">
-    <Setter Property="Padding" Value="12,8" />
-    <Setter Property="CornerRadius" Value="6" />
+    <Setter Property="Padding" Value="10,6" />
+    <Setter Property="CornerRadius" Value="5" />
     <Setter Property="FontSize" Value="13" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Background" Value="#1A3D1A" />
@@ -179,6 +179,31 @@
   </Style>
   <Style Selector="Button.captureBtn:pressed">
     <Setter Property="Background" Value="#306030" />
+  </Style>
+
+  <!-- Crop button -->
+  <Style Selector="Button.cropBtn">
+    <Setter Property="Padding" Value="8,4" />
+    <Setter Property="CornerRadius" Value="5" />
+    <Setter Property="FontSize" Value="12" />
+    <Setter Property="Background" Value="#2A3240" />
+    <Setter Property="Foreground" Value="#D0D8E0" />
+    <Setter Property="BorderBrush" Value="#3A4858" />
+    <Setter Property="BorderThickness" Value="1" />
+  </Style>
+  <Style Selector="Button.cropBtn:pointerover">
+    <Setter Property="Background" Value="#354050" />
+    <Setter Property="BorderBrush" Value="#5080B0" />
+  </Style>
+  <Style Selector="Button.cropBtn.active">
+    <Setter Property="Background" Value="#4A3010" />
+    <Setter Property="Foreground" Value="#FFE8A0" />
+    <Setter Property="BorderBrush" Value="#F0A020" />
+    <Setter Property="FontWeight" Value="SemiBold" />
+  </Style>
+  <Style Selector="Button.cropBtn.active:pointerover">
+    <Setter Property="Background" Value="#5A4010" />
+    <Setter Property="BorderBrush" Value="#FFB830" />
   </Style>
 
   <!-- Delete button -->
@@ -299,18 +324,23 @@
 
   <!-- Section header text -->
   <Style Selector="TextBlock.sectionHeader">
-    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontSize" Value="12" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Foreground" Value="#90A0B4" />
-    <Setter Property="Margin" Value="0,4,0,2" />
+    <Setter Property="Margin" Value="0,2,0,1" />
   </Style>
 
   <!-- Caps section header -->
   <Style Selector="TextBlock.capsHeader">
-    <Setter Property="FontSize" Value="13" />
+    <Setter Property="FontSize" Value="12" />
     <Setter Property="FontWeight" Value="SemiBold" />
     <Setter Property="Foreground" Value="#40C040" />
-    <Setter Property="Margin" Value="0,2,0,2" />
+    <Setter Property="Margin" Value="0,1,0,1" />
+  </Style>
+
+  <!-- Save buttons -->
+  <Style Selector="Border.sidePanel Button.saveBtn">
+    <Setter Property="Padding" Value="8,4" />
   </Style>
 
   <!-- Side panel checkboxes -->
@@ -324,6 +354,27 @@
     <Setter Property="FontSize" Value="12" />
     <Setter Property="CornerRadius" Value="4" />
     <Setter Property="Padding" Value="6,4" />
+    <Setter Property="Transitions">
+      <Transitions>
+        <BrushTransition Property="BorderBrush" Duration="0:0:0.5" />
+      </Transitions>
+    </Setter>
+  </Style>
+  <Style Selector="Border.sidePanel TextBox.pathError">
+    <Setter Property="BorderBrush" Value="#E05050" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+  <Style Selector="Border.sidePanel TextBox.pathError:focus">
+    <Setter Property="BorderBrush" Value="#E05050" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+  <Style Selector="TextBox.pathError">
+    <Setter Property="BorderBrush" Value="#E05050" />
+    <Setter Property="BorderThickness" Value="2" />
+  </Style>
+  <Style Selector="TextBox.pathError:focus">
+    <Setter Property="BorderBrush" Value="#E05050" />
+    <Setter Property="BorderThickness" Value="2" />
   </Style>
 
   <!-- Label text -->
